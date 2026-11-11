@@ -29,7 +29,7 @@ export function CloudDiagnosticsPage({ identityKey, leaseEpoch }: CloudDiagnosti
       <Callout variant="info" className="cloud-diagnostics__callout"><p>診斷只保存在這台電腦；超過 100 筆或 24 小時的紀錄會自動刪除。</p></Callout>
       {hasLease
         ? <CloudDiagnosticsControls identityKey={identityKey} leaseEpoch={leaseEpoch} />
-        : <p>需要有效的操作租約才能查看本機診斷。</p>}
+        : <p>請先登入並進入系統，才能查看本機診斷。</p>}
     </Card>
   </section>;
 }

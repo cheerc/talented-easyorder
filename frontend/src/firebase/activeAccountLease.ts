@@ -83,7 +83,7 @@ export const defaultLeaseState: ActiveLeaseState = {
   isKnown: false,
   isHolder: false,
   isExpired: false,
-  error: '尚未從伺服器確認租約狀態',
+  error: '尚未確認登入狀態',
 };
 
 function validEpoch(value: unknown): value is number {
@@ -142,7 +142,7 @@ function stateFromServerLease(
 }
 
 function validateEpochArgument(epoch: number): void {
-  if (!validEpoch(epoch)) throw new Error('租約操作要求非負整數 expectedEpoch');
+  if (!validEpoch(epoch)) throw new Error('登入狀態資訊不正確，請重新整理頁面。');
 }
 
 async function readServerLease(db: Firestore): Promise<{ data: AccessLeaseDoc; updatedAt: Date } | null> {
@@ -161,7 +161,7 @@ async function classifyAcquireFailure(
 ): Promise<LeaseResult> {
   try {
     const serverLease = await readServerLease(db);
-    if (!serverLease) return lost('伺服器租約不存在或資料格式無效，無法確認使用權');
+    if (!serverLease) return lost('無法確認登入狀態，請重新整理頁面；若持續發生，請聯絡維護者。');
 
     const { data, updatedAt } = serverLease;
     if (data.epoch !== expectedEpoch) {
@@ -175,9 +175,9 @@ async function classifyAcquireFailure(
         updatedAt,
       };
     }
-    return lost('伺服器未確認取得使用權；請重新檢查連線與帳號狀態');
+    return lost('無法開始使用，請確認網路與帳號狀態後再試一次。');
   } catch {
-    return lost('目前無法連線確認租約，請重新連線後再試');
+    return lost('目前無法連線確認登入狀態，請確認網路後再試。');
   }
 }
 
@@ -188,14 +188,14 @@ async function confirmCommittedLease(
 ): Promise<LeaseResult> {
   try {
     const serverLease = await readServerLease(db);
-    if (!serverLease) return lost('租約交易完成後無法從伺服器確認狀態');
+    if (!serverLease) return lost('無法從伺服器確認登入結果，請重新整理頁面確認。');
     const { data, updatedAt } = serverLease;
     if (data.holderUid !== uid || data.epoch !== epoch) {
-      return lost('租約在伺服器確認前已變更，請重新檢查');
+      return lost('登入狀態在確認前已改變（可能有其他人登入），請重新整理頁面。');
     }
     return { status: 'acquired', holderUid: uid, epoch, updatedAt };
   } catch {
-    return lost('租約交易完成，但伺服器回讀失敗；目前不會開放業務資料');
+    return lost('登入已送出，但回讀失敗，暫不顯示資料。請重新整理頁面確認。');
   }
 }
 
@@ -253,17 +253,17 @@ export async function acquireLease(
     const leaseRef = doc(db, LEASE_DOC_PATH);
     const result = await runTransaction(db, async tx => {
       const snapshot = await tx.get(leaseRef);
-      if (!snapshot.exists()) return { status: 'lost' as const, message: '伺服器租約不存在，需由維護流程初始化' };
+      if (!snapshot.exists()) return { status: 'lost' as const, message: '系統尚未完成初始設定，請聯絡維護者。' };
 
       const parsed = readLeaseData(snapshot.data());
-      if (!parsed) return { status: 'lost' as const, message: '伺服器租約格式無效，拒絕取得使用權' };
+      if (!parsed) return { status: 'lost' as const, message: '無法確認登入狀態，請重新整理頁面；若持續發生，請聯絡維護者。' };
       const { data } = parsed;
 
       if (data.epoch !== expectedEpoch) {
         return { status: 'stale_epoch' as const, expectedEpoch, actualEpoch: data.epoch };
       }
       if (data.epoch === Number.MAX_SAFE_INTEGER) {
-        return { status: 'lost' as const, message: '租約 epoch 已達安全上限，拒絕更新' };
+        return { status: 'lost' as const, message: '登入狀態已達上限，請聯絡維護者。' };
       }
 
       // The Rules decide whether this holder is null/expired using request.time. The document the transaction read
@@ -301,16 +301,16 @@ export async function renewLease(
     const leaseRef = doc(db, LEASE_DOC_PATH);
     const result = await runTransaction(db, async tx => {
       const snapshot = await tx.get(leaseRef);
-      if (!snapshot.exists()) return { status: 'lost' as const, message: '伺服器租約不存在' };
+      if (!snapshot.exists()) return { status: 'lost' as const, message: '找不到登入狀態，請重新整理頁面。' };
 
       const parsed = readLeaseData(snapshot.data());
-      if (!parsed) return { status: 'lost' as const, message: '伺服器租約格式無效，拒絕續約' };
+      if (!parsed) return { status: 'lost' as const, message: '無法確認登入狀態，請重新整理頁面；若持續發生，請聯絡維護者。' };
       const { data } = parsed;
       if (data.epoch !== expectedEpoch) {
         return { status: 'stale_epoch' as const, expectedEpoch, actualEpoch: data.epoch };
       }
       if (data.holderUid !== uid) {
-        return { status: 'lost' as const, message: '租約持有人已變更，續約中止' };
+        return { status: 'lost' as const, message: '其他人已登入，這個頁面已停止操作。請重新登入。' };
       }
 
       tx.update(leaseRef, {
@@ -329,9 +329,9 @@ export async function renewLease(
       if (serverLease && serverLease.data.epoch !== expectedEpoch) {
         return { status: 'stale_epoch', expectedEpoch, actualEpoch: serverLease.data.epoch };
       }
-      return lost('伺服器未確認續約；請重新檢查使用權');
+      return lost('無法確認登入仍有效，這個頁面已停止操作。請重新登入。');
     } catch {
-      return lost('目前無法連線確認續約；系統已停止授權資料存取');
+      return lost('目前無法連線確認登入仍有效，這個頁面已停止操作。請確認網路後重新登入。');
     }
   }
 }
@@ -387,10 +387,10 @@ export async function getLeaseStatus(db: Firestore, currentUid?: string): Promis
   void currentUid;
   try {
     const serverLease = await readServerLease(db);
-    if (!serverLease) return unknownLeaseState('伺服器租約不存在或資料格式無效');
+    if (!serverLease) return unknownLeaseState('無法確認登入狀態，請重新整理頁面。');
     return stateFromServerLease(serverLease.data, serverLease.updatedAt);
   } catch {
-    return unknownLeaseState('目前無法從伺服器讀取租約');
+    return unknownLeaseState('目前無法從伺服器讀取登入狀態，請確認網路後再試。');
   }
 }
 
@@ -417,20 +417,20 @@ export function subscribeLease(
           return;
         }
         if (!snapshot.exists()) {
-          onUpdate(unknownLeaseState('伺服器租約不存在'));
+          onUpdate(unknownLeaseState('找不到登入狀態，請重新整理頁面。'));
           return;
         }
         const parsed = readLeaseData(snapshot.data());
         if (!parsed) {
-          onUpdate(unknownLeaseState('伺服器租約格式無效'));
+          onUpdate(unknownLeaseState('無法確認登入狀態，請重新整理頁面。'));
           return;
         }
         onUpdate(stateFromServerLease(parsed.data, parsed.updatedAt));
       },
-      () => onUpdate(unknownLeaseState('無法監聽伺服器租約')),
+      () => onUpdate(unknownLeaseState('無法即時確認登入狀態，請重新整理頁面。')),
     );
   } catch {
-    onUpdate(unknownLeaseState('無法建立伺服器租約監聽'));
+    onUpdate(unknownLeaseState('無法即時確認登入狀態，請重新整理頁面。'));
     return () => {};
   }
 }
@@ -476,7 +476,7 @@ export function startLeaseHeartbeat(
     try {
       const result = await renewLease(db, uid, getEpoch());
       if (stopped) return;
-      if (result.status !== 'acquired') reportLost(`租約續約失敗：${result.status === 'lost' ? result.message : result.status}`);
+      if (result.status !== 'acquired') reportLost(`登入狀態更新失敗：${result.status === 'lost' ? result.message : '登入狀態已改變'}`);
     } catch (error) {
       if (!stopped) reportLost(error instanceof Error ? error.message : String(error));
     } finally {

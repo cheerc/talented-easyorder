@@ -207,7 +207,7 @@ function errorCode(error: unknown): string {
 function errorMessage(error: unknown): string {
   const code = errorCode(error);
   if (code === 'OFFLINE') return '目前無法連線到雲端，沒有顯示本機或不完整資料。請恢復連線後重新載入。';
-  if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '目前使用權已變更，雲端日期與供應商資料已清除。請重新確認使用權。';
+  if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '其他人已登入或登入已失效，雲端日期與供應商資料已清除。請重新登入。';
   if (code === 'UNAUTHORIZED') return '目前帳號沒有雲端日期與供應商資料存取權，資料已清除。請重新登入確認權限。';
   if (code === 'QUOTA_EXCEEDED') return '雲端讀取額度不足，沒有顯示部分資料。請稍後重新載入。';
   if (code === 'MAINTENANCE') return '系統正在維護，沒有顯示部分資料。請稍後重新載入。';
@@ -733,7 +733,7 @@ export function CloudDayVendorsPage({
         loadError: '操作未完成：' + errorMessage(result.error) + '請重新載入伺服器資料後繼續。',
         actionError: result.error.code === 'LOCAL_STORAGE_UNAVAILABLE' ? errorMessage(result.error)
           : failedCommand.kind === 'set-day-menu' && ['REVISION_CONFLICT', 'INVALID_INPUT'].includes(result.error.code)
-            ? '本次菜單命令未成功，輸入與來源日期沒有自動改寫。請重新載入並確認最新菜單來源及伺服器使用權日期；若已跨過臺北午夜，請先取得更新的使用權。'
+            ? '本次菜單命令未成功，輸入與來源日期沒有自動改寫。請重新載入並確認最新菜單；若剛過午夜，請重新載入後再儲存。'
             : '',
         recovery: null, notice: '',
       }));
@@ -764,7 +764,7 @@ export function CloudDayVendorsPage({
       if (revokedScopeRef.current === authorizationScopeKey) return;
       if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
         revokeAuthorization(key, generation, command.commandId, {
-          code: 'LEASE_LOST', message: '目前沒有有效的操作使用權，雲端資料已清除。請重新確認使用權。',
+          code: 'LEASE_LOST', message: '目前沒有有效的登入，雲端資料已清除。請重新登入。',
         });
         return;
       }
@@ -1134,7 +1134,7 @@ export function CloudDayVendorsPage({
     const day = snapshot?.day;
     if (!snapshot || !day || page.recovery) return;
     if (snapshot.dayId !== snapshot.selectionDate || snapshot.selectionDate < snapshot.goLiveDate) {
-      updatePage(previous => ({ ...previous, actionError: '開帳現金只能設定伺服器使用權日期的營業日；請確認最新使用權日期。' }));
+      updatePage(previous => ({ ...previous, actionError: '開帳現金只能設定今天的營業日；若剛過午夜，請重新載入後再試。' }));
       return;
     }
     if (day.status === 'closed') {
@@ -1248,7 +1248,7 @@ export function CloudDayVendorsPage({
       {page.actionError && <div className="cloud-day-vendors__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (
         <div className="cloud-day-vendors__notice" role="status">
-          授權狀態已失效。敏感資料與操作草稿已清除；請重新登入並取得有效使用權。
+          登入狀態已失效。資料與操作草稿已清除；請重新登入。
         </div>
       )}
       {page.notice && <div className="cloud-day-vendors__notice" role="status">{page.notice}</div>}
@@ -1259,7 +1259,7 @@ export function CloudDayVendorsPage({
           <strong>{page.recovery.phase === 'receipt'
             ? '已找到伺服器回執，資料尚待再次讀取。'
             : page.recovery.phase === 'access-lost'
-              ? '使用權已變更；敏感操作內容已清除。'
+              ? '其他人已登入或登入已失效；操作內容已清除。'
               : page.recovery.phase === 'checking'
                 ? '正在查詢原命令結果…'
                 : page.recovery.phase === 'submitting' && page.recovery.timedOut
@@ -1268,7 +1268,7 @@ export function CloudDayVendorsPage({
                   ? '命令送出中，請勿重複操作。'
                   : '結果確認中，請勿重複操作。'}</strong>
           <span>{page.recovery.command ? `${commandLabel(page.recovery.command)} · 命令編號 ${page.recovery.commandId}` : `命令編號 ${page.recovery.commandId}`}</span>
-          {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新確認登入帳號與使用權，再依現場流程核對。</span>}
+          {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新登入，再依現場流程核對。</span>}
           <div className="cloud-day-vendors__actions">
             {page.recovery.command && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt'
               && (page.recovery.phase !== 'submitting' || page.recovery.timedOut) && (
@@ -1369,10 +1369,10 @@ export function CloudDayVendorsPage({
                     </div>
                   </div>
                   {snapshot.dayId !== snapshot.selectionDate && (
-                    <Callout variant="warn">開帳僅限伺服器使用權日期 {snapshot.selectionDate}。此日期可預排菜單，但不能預先開帳。</Callout>
+                    <Callout variant="warn">開帳僅限今天（{snapshot.selectionDate}）。此日期可預排菜單，但不能預先開帳。</Callout>
                   )}
                   {snapshot.dayId === snapshot.selectionDate && snapshot.selectionDate < snapshot.goLiveDate && (
-                    <Callout variant="warn">伺服器使用權日期早於系統啟用日，尚不能設定開帳現金。</Callout>
+                    <Callout variant="warn">今天早於系統啟用日，尚不能設定開帳現金。</Callout>
                   )}
                   {canSetOpeningCash && <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />}
                   {canSetOpeningCash && ledger && lookupError && (

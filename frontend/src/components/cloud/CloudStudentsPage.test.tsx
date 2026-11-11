@@ -582,7 +582,7 @@ describe('CloudStudentsPage', () => {
       <CloudStudentsPage db={db} leaseEpoch={4} identityKey="uid-a:4" onNavigationStateChange={reportNavigationState} />,
     );
 
-    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
     view.rerender(
       <CloudStudentsPage
@@ -933,7 +933,7 @@ describe('CloudStudentsPage', () => {
       expect(screen.getByText('既有學生')).toBeInTheDocument();
 
       await act(async () => failRead());
-      expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+      expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
       expect(screen.queryByText('既有學生')).not.toBeInTheDocument();
       expect(screen.queryByTestId('cloud-students-content')).not.toBeInTheDocument();
     });
@@ -1021,7 +1021,7 @@ describe('CloudStudentsPage', () => {
     it('keeps the revoked-authorization notice visible as a warn Callout', async () => {
       repository.list.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
       renderPage();
-      const text = await screen.findByText(/授權狀態已失效/);
+      const text = await screen.findByText(/登入狀態已失效/);
       expect(text.closest('.callout-warn')).not.toBeNull();
     });
 

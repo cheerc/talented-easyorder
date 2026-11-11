@@ -455,14 +455,6 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       });
       await closeBackfilled(versionDay, today);
     };
-    /** Two access events: a release and an acquire (the lease ends held, at a higher epoch). */
-    const addAccessEvents = async () => {
-      expect(await releaseLease(app, OP.uid, epoch, OP.email)).toBe(true);
-      epoch = (await read('system/accessLease')).epoch as number;
-      expect((await acquireLease(app, OP.uid, epoch, OP.email)).status).toBe('acquired');
-      epoch = (await read('system/accessLease')).epoch as number;
-    };
-
     const phases: Array<{ dimension: string; unitsPerStep: number; add: () => Promise<void> }> = [
       { dimension: 'student', unitsPerStep: 1, add: addStudent },
       { dimension: 'vendor', unitsPerStep: 1, add: addVendor },
@@ -474,7 +466,6 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       { dimension: 'closedDay', unitsPerStep: 1, add: addClosedDay },
       { dimension: 'openDay', unitsPerStep: 1, add: addOpenDay },
       { dimension: 'settlementVersion', unitsPerStep: 2, add: addVersions },
-      { dimension: 'accessEvent', unitsPerStep: 2, add: addAccessEvents },
     ];
 
     // ---- the loads ----
@@ -524,7 +515,6 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         { name: 'load.auditRange', dimensions: ['student', 'vendor', 'dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: null, leaseEpoch: epoch }) },
         // the range audit of one student reads every command of that student (the history), whatever the range
         { name: 'load.auditRangeStudent', dimensions: ['studentTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
-        { name: 'load.accessEvents', dimensions: ['accessEvent'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccessEvents({ range: onToday, leaseEpoch: epoch }) },
         { name: 'load.dayCloseOverview', dimensions: ['openDay'], paged: false, production: production.ledger, make: () => () => closing.readOverview() },
         { name: 'load.dayCloseState', dimensions: ['settlementVersion'], paged: false, production: production.ledger, make: () => () => closing.read(versionDay) },
         { name: 'load.ledgerScan', dimensions: ['closedDay', 'openDay'], paged: true, production: production.ledger, make: pageSize => () => createCloudLedgerReader(app, current, { pageSize }).read() },
@@ -554,7 +544,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         // commands dated today that are not the orders' own (each order is one transaction and one command)
         dayCommand: commandsToday - dayTransaction,
         closedDay: closedMade, openDay: openPastMade,
-        settlementVersion: await adminCount(`days/${versionDay}/settlements`), accessEvent: await adminCount('accessEvents'),
+        settlementVersion: await adminCount(`days/${versionDay}/settlements`),
         command: await headSeq(),
       };
     };

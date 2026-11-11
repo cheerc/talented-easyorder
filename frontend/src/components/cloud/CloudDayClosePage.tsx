@@ -214,7 +214,7 @@ function errorCode(error: unknown): string {
 function errorMessage(error: unknown): string {
   const code = errorCode(error);
   if (code === 'OFFLINE') return '目前無法連線到雲端，沒有顯示本機或不完整資料。請恢復連線後重新載入。';
-  if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '目前使用權已變更，雲端日結資料已清除。請重新確認使用權。';
+  if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '其他人已登入或登入已失效，雲端日結資料已清除。請重新登入。';
   if (code === 'UNAUTHORIZED') return '目前帳號沒有雲端日結存取權，資料已清除。請重新登入確認權限。';
   if (code === 'QUOTA_EXCEEDED') return '雲端讀取額度不足，沒有顯示部分資料。請稍後重新載入。';
   if (code === 'MAINTENANCE') return '系統正在維護，沒有顯示部分資料。請稍後重新載入。';
@@ -975,7 +975,7 @@ export function CloudDayClosePage({
       if (revokedScopeRef.current === authorizationScopeKey) return;
       if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
         revokeAuthorization(key, generation, command.commandId, {
-          code: 'LEASE_LOST', message: '目前沒有有效的操作使用權，雲端資料已清除。請重新確認使用權。',
+          code: 'LEASE_LOST', message: '目前沒有有效的登入，雲端資料已清除。請重新登入。',
         });
         return;
       }
@@ -1652,7 +1652,7 @@ export function CloudDayClosePage({
       {page.actionError && <div className="cloud-day-close__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (
         <div className="cloud-day-close__notice" role="status">
-          授權狀態已失效。日結資料與操作草稿已清除；請重新登入並取得有效使用權。
+          登入狀態已失效。日結資料與操作草稿已清除；請重新登入。
         </div>
       )}
       <Toast message={page.notice} durationMs={/已開始補登這一天/.test(page.notice) ? 8000 : 4000} />
@@ -1662,14 +1662,14 @@ export function CloudDayClosePage({
           <strong>{page.recovery.phase === 'receipt'
             ? '已找到伺服器回執，資料尚待再次讀取。'
             : page.recovery.phase === 'access-lost'
-              ? '使用權已變更；操作內容已清除。'
+              ? '其他人已登入或登入已失效；操作內容已清除。'
               : page.recovery.phase === 'checking'
                 ? '正在查詢原命令結果…'
                 : page.recovery.phase === 'submitting'
                   ? page.recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
                   : '結果確認中，請勿重複操作。'}</strong>
           <span>{page.recovery.command ? `${commandLabel(page.recovery.command)} · 命令編號 ${page.recovery.commandId}` : `命令編號 ${page.recovery.commandId}`}</span>
-          {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新確認登入帳號與使用權，再依現場流程核對。</span>}
+          {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新登入，再依現場流程核對。</span>}
           <div className="cloud-day-close__actions">
             {page.recovery.command && (page.recovery.phase === 'unknown' || (page.recovery.phase === 'submitting' && page.recovery.timedOut)) && (
               <button type="button" className="cloud-day-close__primary" onClick={() => void checkPendingCommand()}>

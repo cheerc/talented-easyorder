@@ -289,7 +289,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       const current = leaseRef.current;
       if (current.isKnown && current.holderUid === currentUid && current.epoch === epoch) {
         confirmedEpochRef.current = null;
-        publishLease({ ...current, isHolder: false, error: result.status === 'lost' ? result.message : '租約尚未確認' });
+        publishLease({ ...current, isHolder: false, error: result.status === 'lost' ? result.message : '尚未確認登入狀態' });
         stopHeartbeat();
         void clearSensitiveDataSafely();
       }
@@ -318,7 +318,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         const epoch = current.epoch;
         probedEpochRef.current = epoch;
         void probeHolder(epoch, { reacquire: true })
-          .catch(() => markUnknownAfterProbeFailure(epoch, '無法確認伺服器租約'))
+          .catch(() => markUnknownAfterProbeFailure(epoch, '無法確認登入狀態'))
           .finally(() => { visibilityProbeInFlight = false; });
         return;
       }
@@ -328,7 +328,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       confirmedEpochRef.current = null;
       probedEpochRef.current = null;
       stopHeartbeat();
-      publishLease({ ...defaultLeaseState, error: '分頁恢復後正在向伺服器確認租約' });
+      publishLease({ ...defaultLeaseState, error: '正在確認登入狀態…' });
       void clearSensitiveDataSafely();
       void (async () => {
         try {
@@ -346,7 +346,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
           if (!isCurrentGeneration()) return;
           publishLease({
             ...defaultLeaseState,
-            error: error instanceof Error ? error.message : '無法確認伺服器租約',
+            error: error instanceof Error ? error.message : '無法確認登入狀態',
           });
         } finally {
           visibilityProbeInFlight = false;
@@ -388,7 +388,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
             error: reason,
           });
           void clearSensitiveDataSafely();
-          emitError({ source: 'auth', message: `[lease] 失去租約使用權: ${reason}` });
+          emitError({ source: 'auth', message: `登入已失效，這個頁面已停止操作：${reason}` });
         };
         // #586 P2: an own, untouched, expired lease is re-acquired once without masking; anything else masks as before.
         const reacquire = reacquireOwnExpiredLeaseRef.current;
@@ -420,12 +420,12 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       return leaseGenerationRef.current === generation && current.ok && current.profile.uid === uid;
     };
     const observed = await apiGetLeaseStatus(fb.db, uid);
-    if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
+    if (!isCurrentAccess()) return { status: 'lost', message: '帳號或登入狀態已變更，請重新確認' };
     if (!observed.isKnown) {
       confirmedEpochRef.current = null;
       publishLease(observed);
       await clearSensitiveDataSafely();
-      return { status: 'lost', message: observed.error ?? '無法確認伺服器租約' };
+      return { status: 'lost', message: observed.error ?? '無法確認登入狀態' };
     }
 
     const currentConfirmed = observed.holderUid === uid && confirmedEpochRef.current === observed.epoch;
@@ -443,7 +443,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     // If expired, an explicit acquire below may advance the epoch under Rules.
     if (observed.holderUid === uid && !currentConfirmed) {
       const proof = await apiRenewLease(fb.db, uid, observed.epoch);
-      if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
+      if (!isCurrentAccess()) return { status: 'lost', message: '帳號或登入狀態已變更，請重新確認' };
       if (proof.status === 'acquired') {
         confirmedEpochRef.current = proof.epoch;
         const next = stateFromResult(proof, uid);
@@ -452,14 +452,14 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       }
       if (proof.status === 'stale_epoch') {
         const latest = await apiGetLeaseStatus(fb.db, uid);
-        if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
+        if (!isCurrentAccess()) return { status: 'lost', message: '帳號或登入狀態已變更，請重新確認' };
         publishLease(latest);
         return proof;
       }
     }
 
     const result = await apiAcquireLease(fb.db, uid, observed.epoch, startingAccess.profile.email);
-    if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
+    if (!isCurrentAccess()) return { status: 'lost', message: '帳號或登入狀態已變更，請重新確認' };
     if (result.status === 'acquired') {
       confirmedEpochRef.current = result.epoch;
       probedEpochRef.current = result.epoch;
@@ -478,12 +478,12 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     } else if (result.status === 'stale_epoch') {
       confirmedEpochRef.current = null;
       const latest = await apiGetLeaseStatus(fb.db, uid);
-      if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
+      if (!isCurrentAccess()) return { status: 'lost', message: '帳號或登入狀態已變更，請重新確認' };
       publishLease(latest);
     } else {
       confirmedEpochRef.current = null;
       const latest = await apiGetLeaseStatus(fb.db, uid);
-      if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
+      if (!isCurrentAccess()) return { status: 'lost', message: '帳號或登入狀態已變更，請重新確認' };
       publishLease(latest.isKnown ? latest : { ...latest, error: result.message });
       await clearSensitiveDataSafely();
     }

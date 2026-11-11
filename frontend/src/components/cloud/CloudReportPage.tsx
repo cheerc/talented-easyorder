@@ -7,7 +7,6 @@ import {
   createCloudLedgerDateRange,
   searchCloudReportStudentIds,
   validateCloudLedgerRange,
-  type CloudAccessEventsSnapshot,
   type CloudAuditRangeSnapshot,
   type CloudLedgerDateRange,
   type CloudLedgerDateRangeKind,
@@ -58,15 +57,8 @@ interface QueryRequest {
   studentId: string | null;
 }
 
-/** The handover table is read-only context: its failure never hides the report, but it is never shown unverified. */
-type AccessEventsView =
-  | { status: 'ready'; snapshot: CloudAccessEventsSnapshot }
-  | { status: 'unavailable'; message: string };
-
 interface Snapshot {
   report: CloudLedgerReport;
-  /** null when the scope is a single account: lease handovers are not account facts. */
-  accessEvents: AccessEventsView | null;
 }
 
 interface FrozenAction {
@@ -224,27 +216,6 @@ function sameEnvelope(report: CloudLedgerReport, audit: CloudAuditRangeSnapshot,
     && report.range.startDate === request.range.startDate && report.range.endDate === request.range.endDate
     && audit.range.startDate === request.range.startDate && audit.range.endDate === request.range.endDate
     && report.scope.studentId === request.studentId && audit.scope.studentId === request.studentId;
-}
-
-function sameAccessEventsEnvelope(events: CloudAccessEventsSnapshot, report: CloudLedgerReport, request: QueryRequest, leaseEpoch: number): boolean {
-  return events.complete === true
-    && events.datasetId === report.datasetId
-    && events.sourceSeq === report.sourceSeq
-    && events.goLiveDate === report.goLiveDate
-    && events.leaseToday === report.leaseToday
-    && events.leaseEpoch === leaseEpoch
-    && events.range.startDate === request.range.startDate && events.range.endDate === request.range.endDate;
-}
-
-const ACCESS_EVENT_KIND_TEXT = {
-  acquire: '取得使用權',
-  takeover: '接手使用權',
-  release: '釋放使用權',
-} as const;
-
-function previousHolderText(row: CloudAccessEventsSnapshot['rows'][number]): string {
-  if (row.previousHolderState === 'none') return '無';
-  return row.previousHolderEmail ?? '（無紀錄）';
 }
 
 function csvFor(type: RecordCloudExportInput['exportType'], snapshot: Snapshot, audit: CloudAuditRangeSnapshot | null): string {
@@ -444,25 +415,9 @@ export function CloudReportPage({
     const generation = ++requestGeneration.current;
     const owner = actionOwnerRef.current;
     if (!owner || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-    const accessEventsRead: Promise<AccessEventsView | null> = query.studentId === null
-      ? reads.readAccessEvents({ range: query.range, leaseEpoch }).then(
-        (events): AccessEventsView => ({ status: 'ready', snapshot: events }),
-        (error): AccessEventsView => {
-          if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) throw error;
-          return { status: 'unavailable', message: `使用權交接無法完整讀取：${messageOf(error)}` };
-        },
-      )
-      : Promise.resolve(null);
-    void Promise.all([
-      reads.readReport({ range: query.range, studentId: query.studentId, leaseEpoch }),
-      accessEventsRead,
-    ]).then(([report, events]) => {
+    void reads.readReport({ range: query.range, studentId: query.studentId, leaseEpoch }).then(report => {
       if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      const accessEvents: AccessEventsView | null = events?.status === 'ready'
-        && !sameAccessEventsEnvelope(events.snapshot, report, query, leaseEpoch)
-        ? { status: 'unavailable', message: '使用權交接紀錄與報表對不上，未顯示；請重新查詢。' }
-        : events;
-      setSnapshot({ report, accessEvents });
+      setSnapshot({ report });
       setLoading(false);
       setPrintDate(query.range.startDate);
       setActionMessage('');
@@ -1081,20 +1036,6 @@ export function CloudReportPage({
           <button type="button" disabled={controlsLocked || !snapshot.report.days.length} onClick={makePrint}>記錄後列印目前完整明細</button>
         </section>
 
-        {snapshot.accessEvents && <section className="cloud-report__section" aria-labelledby="cloud-report-handover-heading">
-          <div className="cloud-report__heading-row"><h3 id="cloud-report-handover-heading">使用權交接</h3>
-            <HelpTip label="使用權交接說明">唯讀記錄：誰在何時取得、接手或釋放編輯使用權；僅顯示 email，不提供匯出。</HelpTip></div>
-          {snapshot.accessEvents.status === 'unavailable'
-            ? <p>{snapshot.accessEvents.message}</p>
-            : !snapshot.accessEvents.snapshot.rows.length
-              ? <EmptyState className="cloud-report__empty" title="此區間沒有使用權交接紀錄。" />
-              : <>
-                <div className="dt-wrap"><table className="dt"><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
-                  <tbody>{snapshot.accessEvents.snapshot.rows.map(row => <tr key={row.epoch}>
-                    <td>{taipeiTime(row.at)}</td><td>{ACCESS_EVENT_KIND_TEXT[row.kind]}</td><td>{row.actorEmail}</td><td>{previousHolderText(row)}</td>
-                  </tr>)}</tbody></table></div>
-              </>}
-        </section>}
       </>}
 
       {showRecovery && visibleAction && <div className="cloud-report__recovery" role="region" aria-label="輸出命令確認">

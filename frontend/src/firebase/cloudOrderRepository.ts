@@ -253,7 +253,7 @@ function readError(error: unknown): CloudOrderRepositoryError {
     'QUOTA_EXCEEDED', 'OFFLINE', 'INVALID_INPUT', 'UNKNOWN_RESULT'].includes(code)) {
     return new CloudOrderRepositoryError(code as CloudOrderReadErrorCode, message || '無法讀取雲端訂餐資料');
   }
-  if (code.includes('permission-denied')) return new CloudOrderRepositoryError('LEASE_LOST', '目前帳號沒有讀取訂餐資料的有效使用權');
+  if (code.includes('permission-denied')) return new CloudOrderRepositoryError('LEASE_LOST', '目前無法讀取訂餐資料：可能有其他人已登入，或登入已失效。請重新登入後再試。');
   if (code.includes('unauthenticated')) return new CloudOrderRepositoryError('UNAUTHORIZED', '請重新登入 Google 操作員帳號');
   if (code.includes('resource-exhausted')) return new CloudOrderRepositoryError('QUOTA_EXCEEDED', '目前讀取次數已達服務限制');
   if (code.includes('unavailable') || code.includes('deadline-exceeded') || code.includes('cancelled')) {
@@ -279,7 +279,7 @@ function decodeLease(value: unknown, uid: string): string {
   if (!exactKeys(value, ['holderUid', 'epoch', 'updatedAt'])
     || value.holderUid !== uid || !integer(value.epoch, 0, Number.MAX_SAFE_INTEGER)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudOrderRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
+    throw new CloudOrderRepositoryError('LEASE_LOST', '目前無法確認登入狀態，請重新登入後再試。');
   }
   return taipeiDate(value.updatedAt);
 }
@@ -420,7 +420,7 @@ async function readHead(db: Firestore) {
 
 async function readLeaseDate(db: Firestore, uid: string): Promise<string> {
   const snapshot = await getDocFromServer(doc(db, accessLeasePath()));
-  if (!snapshot.exists()) throw new CloudOrderRepositoryError('LEASE_LOST', '使用權租約不存在');
+  if (!snapshot.exists()) throw new CloudOrderRepositoryError('LEASE_LOST', '找不到登入狀態，請重新登入後再試。');
   return decodeLease(snapshot.data(), uid);
 }
 

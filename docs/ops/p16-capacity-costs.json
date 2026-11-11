@@ -1176,936 +1176,6 @@
         "writes": {}
       }
     },
-    "load.accessEvents": {
-      "units": [
-        "accessEvent"
-      ],
-      "reads": {
-        "fixed": 12,
-        "perUnit": {
-          "accessEvent": 1.02
-        }
-      },
-      "readAuthorization": {
-        "fixed": 18,
-        "perUnit": {
-          "accessEvent": 0.04
-        }
-      },
-      "readAuthorizationDeduped": {
-        "fixed": 18,
-        "perUnit": {
-          "accessEvent": 0.04
-        }
-      },
-      "writes": 0,
-      "deletes": 0,
-      "detail": {
-        "pageSizes": [
-          6,
-          12
-        ],
-        "productionPageSize": 100,
-        "readsPerDocument": {
-          "accessEvent": 1
-        },
-        "readsPerPage": {
-          "accessEvent": 2
-        },
-        "states": [
-          {
-            "dims": {
-              "student": 20,
-              "vendor": 0,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 34
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 26,
-              "vendor": 0,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 40
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 32,
-              "vendor": 0,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 46
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 0,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 52
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 6,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 58
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 12,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 64
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 1,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 70
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 7,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 76
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 13,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 82
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 19,
-              "rangeAccount": 0,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 88
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 25,
-              "rangeAccount": 6,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 94
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 31,
-              "rangeAccount": 12,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 100
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 37,
-              "rangeAccount": 18,
-              "studentTransaction": 1,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 106
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 37,
-              "rangeAccount": 18,
-              "studentTransaction": 7,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 112
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 37,
-              "rangeAccount": 18,
-              "studentTransaction": 13,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 118
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 37,
-              "rangeAccount": 18,
-              "studentTransaction": 19,
-              "studentRangeTransaction": 1,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 124
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 43,
-              "rangeAccount": 18,
-              "studentTransaction": 25,
-              "studentRangeTransaction": 7,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 130
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 49,
-              "rangeAccount": 18,
-              "studentTransaction": 31,
-              "studentRangeTransaction": 13,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 136
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 2,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 142
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 8,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 148
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 14,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 154
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 1,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 160
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 7,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 184
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 13,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 208
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 0,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 232
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 6,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 238
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 12,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 244
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 1,
-              "accessEvent": 0,
-              "command": 250
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 7,
-              "accessEvent": 0,
-              "command": 256
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 13,
-              "accessEvent": 0,
-              "command": 262
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            },
-            "large": {
-              "reads": 9,
-              "authorization": 13,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 18,
-              "authorization": 18,
-              "authQueries": 2
-            },
-            "large": {
-              "reads": 15,
-              "authorization": 14,
-              "authQueries": 1
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 26,
-              "authorization": 22,
-              "authQueries": 3
-            },
-            "large": {
-              "reads": 24,
-              "authorization": 18,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
-              "command": 268
-            },
-            "small": {
-              "reads": 34,
-              "authorization": 26,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 29,
-              "authorization": 18,
-              "authQueries": 2
-            }
-          }
-        ],
-        "lastRunReadsByKey": {
-          "doc system/dataHead": 7,
-          "doc system/accessLease": 7,
-          "query accessEvents": 19,
-          "doc accessEvents/*": 1
-        }
-      }
-    },
     "load.accountHistory": {
       "units": [
         "student",
@@ -2160,7 +1230,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -2186,7 +1255,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -2212,7 +1280,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -2238,7 +1305,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -2264,7 +1330,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -2290,7 +1355,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -2316,7 +1380,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -2342,7 +1405,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -2368,7 +1430,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -2394,7 +1455,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -2420,7 +1480,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -2446,7 +1505,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -2472,7 +1530,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -2498,7 +1555,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -2524,7 +1580,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -2550,7 +1605,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -2576,7 +1630,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -2602,7 +1655,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -2628,7 +1680,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -2654,7 +1705,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -2680,7 +1730,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -2706,7 +1755,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -2732,7 +1780,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -2758,7 +1805,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -2784,7 +1830,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -2810,7 +1855,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -2836,7 +1880,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -2862,7 +1905,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -2888,7 +1930,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -2914,7 +1955,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -2940,85 +1980,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 34,
-              "authorization": 32,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 30,
-              "authorization": 22,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 34,
-              "authorization": 32,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 30,
-              "authorization": 22,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 34,
-              "authorization": 32,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 30,
-              "authorization": 22,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -3098,7 +2059,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -3124,7 +2084,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -3150,7 +2109,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -3176,7 +2134,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -3202,7 +2159,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -3228,7 +2184,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -3254,7 +2209,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -3280,7 +2234,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -3306,7 +2259,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -3332,7 +2284,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -3358,7 +2309,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -3384,7 +2334,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -3410,7 +2359,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -3436,7 +2384,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -3462,7 +2409,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -3488,7 +2434,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -3514,7 +2459,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -3540,7 +2484,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -3566,7 +2509,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -3592,7 +2534,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -3618,7 +2559,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -3644,7 +2584,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -3670,7 +2609,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -3696,7 +2634,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -3722,7 +2659,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -3748,7 +2684,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -3774,7 +2709,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -3800,7 +2734,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -3826,7 +2759,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -3852,7 +2784,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -3878,85 +2809,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 105,
-              "authorization": 71,
-              "authQueries": 26
-            },
-            "large": {
-              "reads": 93,
-              "authorization": 41,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 105,
-              "authorization": 71,
-              "authQueries": 26
-            },
-            "large": {
-              "reads": 93,
-              "authorization": 41,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 105,
-              "authorization": 71,
-              "authQueries": 26
-            },
-            "large": {
-              "reads": 93,
-              "authorization": 41,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -4045,7 +2897,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -4071,7 +2922,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -4097,7 +2947,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -4123,7 +2972,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -4149,7 +2997,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -4175,7 +3022,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -4201,7 +3047,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -4227,7 +3072,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -4253,7 +3097,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -4279,7 +3122,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -4305,7 +3147,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -4331,7 +3172,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -4357,7 +3197,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -4383,7 +3222,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -4409,7 +3247,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -4435,7 +3272,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -4461,7 +3297,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -4487,7 +3322,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -4513,7 +3347,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -4539,7 +3372,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -4565,7 +3397,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -4591,7 +3422,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -4617,7 +3447,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -4643,7 +3472,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -4669,7 +3497,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -4695,7 +3522,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -4721,7 +3547,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -4747,7 +3572,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -4773,7 +3597,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -4799,7 +3622,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -4825,85 +3647,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 181,
-              "authorization": 121,
-              "authQueries": 46
-            },
-            "large": {
-              "reads": 159,
-              "authorization": 66,
-              "authQueries": 24
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 181,
-              "authorization": 121,
-              "authQueries": 46
-            },
-            "large": {
-              "reads": 159,
-              "authorization": 66,
-              "authQueries": 24
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 181,
-              "authorization": 121,
-              "authQueries": 46
-            },
-            "large": {
-              "reads": 159,
-              "authorization": 66,
-              "authQueries": 24
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -4974,7 +3717,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -5000,7 +3742,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -5026,7 +3767,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -5052,7 +3792,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -5078,7 +3817,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -5104,7 +3842,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -5130,7 +3867,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -5156,7 +3892,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -5182,7 +3917,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -5208,7 +3942,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -5234,7 +3967,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -5260,7 +3992,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -5286,7 +4017,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -5312,7 +4042,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -5338,7 +4067,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -5364,7 +4092,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -5390,7 +4117,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -5416,7 +4142,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -5442,7 +4167,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -5468,7 +4192,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -5494,7 +4217,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -5520,7 +4242,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -5546,7 +4267,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -5572,7 +4292,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -5598,7 +4317,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -5624,7 +4342,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -5650,7 +4367,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -5676,7 +4392,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -5702,7 +4417,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -5728,7 +4442,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -5754,85 +4467,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 62,
-              "authorization": 41,
-              "authQueries": 14
-            },
-            "large": {
-              "reads": 53,
-              "authorization": 26,
-              "authQueries": 8
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 62,
-              "authorization": 41,
-              "authQueries": 14
-            },
-            "large": {
-              "reads": 53,
-              "authorization": 26,
-              "authQueries": 8
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 62,
-              "authorization": 41,
-              "authQueries": 14
-            },
-            "large": {
-              "reads": 53,
-              "authorization": 26,
-              "authQueries": 8
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -5898,7 +4532,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -5919,7 +4552,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -5940,7 +4572,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -5961,7 +4592,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -5982,7 +4612,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -6003,7 +4632,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -6024,7 +4652,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -6045,7 +4672,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -6066,7 +4692,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -6087,7 +4712,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -6108,7 +4732,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -6129,7 +4752,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -6150,7 +4772,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -6171,7 +4792,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -6192,7 +4812,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -6213,7 +4832,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -6234,7 +4852,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -6255,7 +4872,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -6276,7 +4892,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -6297,7 +4912,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -6318,7 +4932,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -6339,7 +4952,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -6360,7 +4972,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -6381,7 +4992,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -6402,7 +5012,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -6423,7 +5032,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -6444,7 +5052,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -6465,7 +5072,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -6486,7 +5092,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -6507,7 +5112,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -6528,70 +5132,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 44,
-              "authorization": 11,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 44,
-              "authorization": 11,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 44,
-              "authorization": 11,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -6655,7 +5195,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -6681,7 +5220,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -6707,7 +5245,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -6733,7 +5270,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -6759,7 +5295,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -6785,7 +5320,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -6811,7 +5345,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -6837,7 +5370,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -6863,7 +5395,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -6889,7 +5420,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -6915,7 +5445,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -6941,7 +5470,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -6967,7 +5495,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -6993,7 +5520,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -7019,7 +5545,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -7045,7 +5570,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -7071,7 +5595,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -7097,7 +5620,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -7123,7 +5645,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -7149,7 +5670,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -7175,7 +5695,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -7201,7 +5720,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -7227,7 +5745,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -7253,7 +5770,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -7279,7 +5795,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -7305,7 +5820,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -7331,7 +5845,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -7357,7 +5870,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -7383,7 +5895,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -7409,7 +5920,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -7435,85 +5945,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 537,
-              "authorization": 628,
-              "authQueries": 90
-            },
-            "large": {
-              "reads": 537,
-              "authorization": 584,
-              "authQueries": 46
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 537,
-              "authorization": 628,
-              "authQueries": 90
-            },
-            "large": {
-              "reads": 537,
-              "authorization": 584,
-              "authQueries": 46
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 537,
-              "authorization": 628,
-              "authQueries": 90
-            },
-            "large": {
-              "reads": 537,
-              "authorization": 584,
-              "authQueries": 46
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -7579,7 +6010,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -7600,7 +6030,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -7621,7 +6050,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -7642,7 +6070,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -7663,7 +6090,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -7684,7 +6110,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -7705,7 +6130,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -7726,7 +6150,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -7747,7 +6170,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -7768,7 +6190,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -7789,7 +6210,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -7810,7 +6230,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -7831,7 +6250,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -7852,7 +6270,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -7873,7 +6290,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -7894,7 +6310,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -7915,7 +6330,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -7936,7 +6350,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -7957,7 +6370,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -7978,7 +6390,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -7999,7 +6410,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -8020,7 +6430,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -8041,7 +6450,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -8062,7 +6470,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -8083,7 +6490,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -8104,7 +6510,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -8125,7 +6530,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -8146,7 +6550,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -8167,7 +6570,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -8188,7 +6590,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -8209,70 +6610,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 24,
-              "authorization": 9,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 24,
-              "authorization": 9,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 24,
-              "authorization": 9,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -8334,7 +6671,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -8355,7 +6691,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -8376,7 +6711,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -8397,7 +6731,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -8418,7 +6751,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -8439,7 +6771,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -8460,7 +6791,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -8481,7 +6811,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -8502,7 +6831,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -8523,7 +6851,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -8544,7 +6871,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -8565,7 +6891,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -8586,7 +6911,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -8607,7 +6931,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -8628,7 +6951,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -8649,7 +6971,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -8670,7 +6991,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -8691,7 +7011,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -8712,7 +7031,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -8733,7 +7051,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -8754,7 +7071,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -8775,7 +7091,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -8796,7 +7111,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -8817,7 +7131,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -8838,7 +7151,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -8859,7 +7171,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -8880,7 +7191,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -8901,7 +7211,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -8922,7 +7231,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -8943,7 +7251,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -8964,70 +7271,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 23,
-              "authorization": 10,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 23,
-              "authorization": 10,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 23,
-              "authorization": 10,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -9093,7 +7336,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -9119,7 +7361,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -9145,7 +7386,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -9171,7 +7411,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -9197,7 +7436,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -9223,7 +7461,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -9249,7 +7486,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -9275,7 +7511,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -9301,7 +7536,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -9327,7 +7561,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -9353,7 +7586,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -9379,7 +7611,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -9405,7 +7636,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -9431,7 +7661,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -9457,7 +7686,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -9483,7 +7711,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -9509,7 +7736,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -9535,7 +7761,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -9561,7 +7786,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -9587,7 +7811,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -9613,7 +7836,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -9639,7 +7861,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -9665,7 +7886,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -9691,7 +7911,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -9717,7 +7936,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -9743,7 +7961,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -9769,7 +7986,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -9795,7 +8011,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -9821,7 +8036,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -9847,7 +8061,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -9873,85 +8086,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 24,
-              "authorization": 16,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 23,
-              "authorization": 12,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 24,
-              "authorization": 16,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 23,
-              "authorization": 12,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 24,
-              "authorization": 16,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 23,
-              "authorization": 12,
-              "authQueries": 4
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -10050,7 +8184,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -10076,7 +8209,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -10102,7 +8234,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -10128,7 +8259,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -10154,7 +8284,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -10180,7 +8309,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -10206,7 +8334,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -10232,7 +8359,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -10258,7 +8384,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -10284,7 +8409,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -10310,7 +8434,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -10336,7 +8459,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -10362,7 +8484,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -10388,7 +8509,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -10414,7 +8534,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -10440,7 +8559,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -10466,7 +8584,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -10492,7 +8609,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -10518,7 +8634,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -10544,7 +8659,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -10570,7 +8684,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -10596,7 +8709,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -10622,7 +8734,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -10648,7 +8759,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -10674,7 +8784,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -10700,7 +8809,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -10726,7 +8834,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -10752,7 +8859,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -10778,7 +8884,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -10804,7 +8909,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -10830,90 +8934,11 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
               "command": 268
             },
             "small": {
               "reads": 75,
               "authorization": 43,
-              "authQueries": 18
-            },
-            "large": {
-              "reads": 72,
-              "authorization": 33,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 74,
-              "authorization": 41,
-              "authQueries": 18
-            },
-            "large": {
-              "reads": 72,
-              "authorization": 33,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 74,
-              "authorization": 41,
-              "authQueries": 18
-            },
-            "large": {
-              "reads": 72,
-              "authorization": 33,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
-              "command": 268
-            },
-            "small": {
-              "reads": 74,
-              "authorization": 41,
               "authQueries": 18
             },
             "large": {
@@ -10927,7 +8952,8 @@
           "doc system/dataHead": 11,
           "doc system/accessLease": 1,
           "query postCloseEntries": 1,
-          "query days": 61
+          "query days": 61,
+          "doc days/*/settlements/*": 1
         }
       }
     },
@@ -10983,7 +9009,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -11009,7 +9034,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -11035,7 +9059,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -11061,7 +9084,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -11087,7 +9109,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -11113,7 +9134,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -11139,7 +9159,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -11165,7 +9184,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -11191,7 +9209,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -11217,7 +9234,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -11243,7 +9259,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -11269,7 +9284,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -11295,7 +9309,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -11321,7 +9334,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -11347,7 +9359,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -11373,7 +9384,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -11399,7 +9409,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -11425,7 +9434,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -11451,7 +9459,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -11477,7 +9484,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -11503,7 +9509,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -11529,7 +9534,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -11555,7 +9559,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -11581,7 +9584,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -11607,7 +9609,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -11633,7 +9634,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -11659,7 +9659,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -11685,7 +9684,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -11711,7 +9709,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -11737,7 +9734,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -11763,85 +9759,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 94,
-              "authorization": 81,
-              "authQueries": 18
-            },
-            "large": {
-              "reads": 92,
-              "authorization": 73,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 94,
-              "authorization": 81,
-              "authQueries": 18
-            },
-            "large": {
-              "reads": 92,
-              "authorization": 73,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 94,
-              "authorization": 81,
-              "authQueries": 18
-            },
-            "large": {
-              "reads": 92,
-              "authorization": 73,
-              "authQueries": 14
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -11920,7 +9837,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -11946,7 +9862,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -11972,7 +9887,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -11998,7 +9912,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -12024,7 +9937,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -12050,7 +9962,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -12076,7 +9987,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -12102,7 +10012,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -12128,7 +10037,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -12154,7 +10062,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -12180,7 +10087,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -12206,7 +10112,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -12232,7 +10137,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -12258,7 +10162,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -12284,7 +10187,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -12310,7 +10212,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -12336,7 +10237,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -12362,7 +10262,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -12388,7 +10287,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -12414,7 +10312,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -12440,7 +10337,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -12466,7 +10362,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -12492,7 +10387,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -12518,7 +10412,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -12544,7 +10437,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -12570,7 +10462,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -12596,7 +10487,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -12622,7 +10512,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -12648,7 +10537,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -12674,7 +10562,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -12700,85 +10587,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 124,
-              "authorization": 43,
-              "authQueries": 26
-            },
-            "large": {
-              "reads": 124,
-              "authorization": 33,
-              "authQueries": 16
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 124,
-              "authorization": 43,
-              "authQueries": 26
-            },
-            "large": {
-              "reads": 124,
-              "authorization": 33,
-              "authQueries": 16
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 124,
-              "authorization": 43,
-              "authQueries": 26
-            },
-            "large": {
-              "reads": 124,
-              "authorization": 33,
-              "authQueries": 16
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -12946,7 +10754,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -12972,7 +10779,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -12998,7 +10804,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -13024,7 +10829,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -13050,7 +10854,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -13076,7 +10879,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -13102,7 +10904,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -13128,7 +10929,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -13154,7 +10954,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -13180,7 +10979,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -13206,7 +11004,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -13232,7 +11029,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -13258,7 +11054,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -13284,7 +11079,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -13310,7 +11104,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -13336,7 +11129,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -13362,7 +11154,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -13388,7 +11179,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -13414,7 +11204,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -13440,7 +11229,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -13466,7 +11254,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -13492,7 +11279,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -13518,7 +11304,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -13544,7 +11329,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -13570,7 +11354,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -13596,7 +11379,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -13622,7 +11404,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -13648,7 +11429,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -13674,7 +11454,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -13700,7 +11479,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -13726,85 +11504,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 121,
-              "authorization": 66,
-              "authQueries": 22
-            },
-            "large": {
-              "reads": 111,
-              "authorization": 41,
-              "authQueries": 12
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 121,
-              "authorization": 66,
-              "authQueries": 22
-            },
-            "large": {
-              "reads": 111,
-              "authorization": 41,
-              "authQueries": 12
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 121,
-              "authorization": 66,
-              "authQueries": 22
-            },
-            "large": {
-              "reads": 111,
-              "authorization": 41,
-              "authQueries": 12
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -13885,7 +11584,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -13911,7 +11609,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -13937,7 +11634,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -13963,7 +11659,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -13989,7 +11684,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -14015,7 +11709,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -14041,7 +11734,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -14067,7 +11759,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -14093,7 +11784,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -14119,7 +11809,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -14145,7 +11834,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -14171,7 +11859,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -14197,7 +11884,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -14223,7 +11909,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -14249,7 +11934,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -14275,7 +11959,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -14301,7 +11984,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -14327,7 +12009,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -14353,7 +12034,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -14379,7 +12059,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -14405,7 +12084,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -14431,7 +12109,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -14457,7 +12134,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -14483,7 +12159,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -14509,7 +12184,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -14535,7 +12209,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -14561,7 +12234,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -14587,7 +12259,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -14613,7 +12284,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -14639,7 +12309,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -14665,85 +12334,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 73,
-              "authorization": 36,
-              "authQueries": 10
-            },
-            "large": {
-              "reads": 69,
-              "authorization": 26,
-              "authQueries": 6
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 73,
-              "authorization": 36,
-              "authQueries": 10
-            },
-            "large": {
-              "reads": 69,
-              "authorization": 26,
-              "authQueries": 6
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 73,
-              "authorization": 36,
-              "authQueries": 10
-            },
-            "large": {
-              "reads": 69,
-              "authorization": 26,
-              "authQueries": 6
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -14812,7 +12402,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -14833,7 +12422,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -14854,7 +12442,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -14875,7 +12462,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -14896,7 +12482,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -14917,7 +12502,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -14938,7 +12522,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -14959,7 +12542,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -14980,7 +12562,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -15001,7 +12582,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -15022,7 +12602,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -15043,7 +12622,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -15064,7 +12642,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -15085,7 +12662,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -15106,7 +12682,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -15127,7 +12702,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -15148,7 +12722,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -15169,7 +12742,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -15190,7 +12762,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -15211,7 +12782,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -15232,7 +12802,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -15253,7 +12822,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -15274,7 +12842,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -15295,7 +12862,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -15316,7 +12882,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -15337,7 +12902,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -15358,7 +12922,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -15379,7 +12942,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -15400,7 +12962,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -15421,7 +12982,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -15442,70 +13002,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 40,
-              "authorization": 6,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 40,
-              "authorization": 6,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 40,
-              "authorization": 6,
-              "authQueries": 2
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {
@@ -15569,7 +13065,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 34
             },
             "small": {
@@ -15595,7 +13090,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 40
             },
             "small": {
@@ -15621,7 +13115,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 46
             },
             "small": {
@@ -15647,7 +13140,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 52
             },
             "small": {
@@ -15673,7 +13165,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 58
             },
             "small": {
@@ -15699,7 +13190,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 64
             },
             "small": {
@@ -15725,7 +13215,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 70
             },
             "small": {
@@ -15751,7 +13240,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 76
             },
             "small": {
@@ -15777,7 +13265,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 82
             },
             "small": {
@@ -15803,7 +13290,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 88
             },
             "small": {
@@ -15829,7 +13315,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 94
             },
             "small": {
@@ -15855,7 +13340,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 100
             },
             "small": {
@@ -15881,7 +13365,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 106
             },
             "small": {
@@ -15907,7 +13390,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 112
             },
             "small": {
@@ -15933,7 +13415,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 118
             },
             "small": {
@@ -15959,7 +13440,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 124
             },
             "small": {
@@ -15985,7 +13465,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 130
             },
             "small": {
@@ -16011,7 +13490,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 136
             },
             "small": {
@@ -16037,7 +13515,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 142
             },
             "small": {
@@ -16063,7 +13540,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 148
             },
             "small": {
@@ -16089,7 +13565,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 154
             },
             "small": {
@@ -16115,7 +13590,6 @@
               "closedDay": 1,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 160
             },
             "small": {
@@ -16141,7 +13615,6 @@
               "closedDay": 7,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 184
             },
             "small": {
@@ -16167,7 +13640,6 @@
               "closedDay": 13,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 208
             },
             "small": {
@@ -16193,7 +13665,6 @@
               "closedDay": 19,
               "openDay": 0,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 232
             },
             "small": {
@@ -16219,7 +13690,6 @@
               "closedDay": 19,
               "openDay": 6,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 238
             },
             "small": {
@@ -16245,7 +13715,6 @@
               "closedDay": 19,
               "openDay": 12,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 244
             },
             "small": {
@@ -16271,7 +13740,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 1,
-              "accessEvent": 0,
               "command": 250
             },
             "small": {
@@ -16297,7 +13765,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 7,
-              "accessEvent": 0,
               "command": 256
             },
             "small": {
@@ -16323,7 +13790,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 13,
-              "accessEvent": 0,
               "command": 262
             },
             "small": {
@@ -16349,85 +13815,6 @@
               "closedDay": 19,
               "openDay": 18,
               "settlementVersion": 19,
-              "accessEvent": 0,
-              "command": 268
-            },
-            "small": {
-              "reads": 44,
-              "authorization": 86,
-              "authQueries": 0
-            },
-            "large": {
-              "reads": 44,
-              "authorization": 86,
-              "authQueries": 0
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 6,
-              "command": 268
-            },
-            "small": {
-              "reads": 44,
-              "authorization": 86,
-              "authQueries": 0
-            },
-            "large": {
-              "reads": 44,
-              "authorization": 86,
-              "authQueries": 0
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 12,
-              "command": 268
-            },
-            "small": {
-              "reads": 44,
-              "authorization": 86,
-              "authQueries": 0
-            },
-            "large": {
-              "reads": 44,
-              "authorization": 86,
-              "authQueries": 0
-            }
-          },
-          {
-            "dims": {
-              "student": 38,
-              "vendor": 18,
-              "dayTransaction": 55,
-              "rangeAccount": 18,
-              "studentTransaction": 37,
-              "studentRangeTransaction": 19,
-              "dayCommand": 20,
-              "closedDay": 19,
-              "openDay": 18,
-              "settlementVersion": 19,
-              "accessEvent": 18,
               "command": 268
             },
             "small": {

@@ -84,7 +84,7 @@ export function createCloudBackupRepository(db: Firestore, options: CloudBackupR
   const pageSize = options.pageSize ?? PAGE_SIZE;
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > PAGE_SIZE) throw new BackupValidationError('備份分頁大小不合法');
   async function readHead(): Promise<BackupHead> {
-    if (!options.currentUid()) throw new BackupValidationError('需要有效操作員使用權才能讀取備份來源');
+    if (!options.currentUid()) throw new BackupValidationError('請先登入後才能讀取備份來源。');
     const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
     if (!snapshot.exists()) throw new BackupValidationError('雲端 dataHead 不存在');
     return validHead(snapshot.data());

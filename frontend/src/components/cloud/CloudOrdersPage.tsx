@@ -223,7 +223,7 @@ function errorCode(error: unknown): string {
 function errorText(error: unknown): string {
   const code = errorCode(error);
   if (code === 'OFFLINE') return '目前無法連線到雲端，沒有顯示本機或不完整資料。請恢復連線後重新載入。';
-  if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '目前使用權已變更，訂餐資料已清除。請重新確認使用權。';
+  if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '其他人已登入或登入已失效，訂餐資料已清除。請重新登入。';
   if (code === 'UNAUTHORIZED') return '目前帳號沒有雲端訂餐資料存取權，資料已清除。請重新登入確認權限。';
   if (code === 'QUOTA_EXCEEDED') return '雲端讀取額度不足，沒有顯示部分資料。請稍後重新載入。';
   if (code === 'MAINTENANCE') return '系統正在維護，暫停訂餐。請稍後重新載入。';
@@ -598,7 +598,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         loading: false,
         loadError: errorText(error),
         actionError: pendingCommandId
-          ? `命令 ${pendingCommandId} 的結果尚未確認，勿重新收款。重新取得使用權後會用同一編號查詢。`
+          ? `命令 ${pendingCommandId} 的結果尚未確認，勿重新收款。重新登入後會用同一編號查詢。`
           : '',
       };
     });
@@ -645,7 +645,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           snapshot: null,
           refreshingSnapshot: null,
           loading: false,
-          loadError: '已確認命令所屬的資料集已變更；請重新取得使用權並查證，不要再次送出原操作。',
+          loadError: '已確認命令所屬的資料集已變更；請重新登入並查證，不要再次送出原操作。',
         }));
         return false;
       }

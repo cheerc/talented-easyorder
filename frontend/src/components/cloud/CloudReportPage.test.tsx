@@ -1248,10 +1248,10 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
       expect(page).toHaveTextContent('自訂最多 31 日，超出時不會截短');
     });
 
-    it('wraps the three tables in the shared wrapper and right-aligns amount and count cells with dt-num', async () => {
+    it('wraps the tables in the shared wrapper and right-aligns amount and count cells with dt-num', async () => {
       const page = await renderReady('operator-a:4:p5-tables');
       const tables = Array.from(page.querySelectorAll('table.dt'));
-      expect(tables).toHaveLength(3);
+      expect(tables).toHaveLength(2);
       for (const table of tables) expect(table.parentElement).toHaveClass('dt-wrap');
 
       const numericCols = (name: string, headers: string[]) => {

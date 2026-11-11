@@ -2023,7 +2023,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
       const lost = async () => {
         const pageHidden = await page.locator('main.cloud-day-close').count() === 0;
         const revoked = await page.getByText('其他人已登入或登入已失效；操作內容已清除。').isVisible().catch(() => false)
-          || await page.getByText(/授權狀態已失效/).isVisible().catch(() => false);
+          || await page.getByText(/登入狀態已失效/).isVisible().catch(() => false);
         return pageHidden || revoked;
       };
       await expect.poll(lost).toBe(true);

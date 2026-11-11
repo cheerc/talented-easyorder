@@ -423,7 +423,7 @@ async function readPostCloseEntries(
 function readError(error: unknown): CloudDayCloseRepositoryError {
   if (error instanceof CloudDayCloseRepositoryError) return error;
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code.includes('permission-denied')) return new CloudDayCloseRepositoryError('LEASE_LOST', '目前帳號沒有讀取日結的有效使用權');
+  if (code.includes('permission-denied')) return new CloudDayCloseRepositoryError('LEASE_LOST', '目前無法讀取日結：可能有其他人已登入，或登入已失效。請重新登入後再試。');
   if (code.includes('unauthenticated')) return new CloudDayCloseRepositoryError('UNAUTHORIZED', '請重新登入 Google 操作員帳號');
   if (code.includes('resource-exhausted')) return new CloudDayCloseRepositoryError('QUOTA_EXCEEDED', '目前讀取次數已達服務限制');
   if (code.includes('unavailable') || code.includes('deadline-exceeded') || code.includes('cancelled')) {
@@ -487,10 +487,10 @@ function taipeiDate(timestamp: Timestamp): string {
 
 async function readLeaseDate(db: Firestore, user: CurrentUser): Promise<string> {
   const lease = await getDocFromServer(doc(db, accessLeasePath()));
-  assertServerConfirmed(lease, '使用權狀態');
+  assertServerConfirmed(lease, '登入狀態');
   const leaseValue: unknown = lease.exists() ? lease.data() : null;
   if (!plainRecord(leaseValue) || leaseValue.holderUid !== user.uid || !(leaseValue.updatedAt instanceof Timestamp)) {
-    throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
+    throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前無法確認登入狀態，請重新登入後再試。');
   }
   return taipeiDate(leaseValue.updatedAt);
 }

@@ -570,7 +570,7 @@ describe('CloudDayClosePage', () => {
     fireEvent.change(within(form).getByLabelText(/原因（必填/), { target: { value: '機密草稿' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認補記' }));
 
-    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`命令編號 ${commandId}`))).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
     expect(screen.queryByText('機密草稿')).not.toBeInTheDocument();
@@ -714,7 +714,7 @@ describe('CloudDayClosePage', () => {
     const form = await closeForm();
     fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
-    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`命令編號 ${commandId}`))).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
     expect(report).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
@@ -1671,7 +1671,7 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       repository.cleanupConfirmedIntent.mockRejectedValueOnce({ code, message: 'authority changed' });
       render(pageElement({ onLedgerChanged, onNavigationStateChange }));
       await submitClose(await closeForm());
-      expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+      expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
       const recovery = screen.getByRole('alert', { name: '命令結果確認' });
       expect(recovery).toHaveTextContent(commandId);
       expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
@@ -1753,7 +1753,7 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       expect(screen.getByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
 
       await act(async () => failRead());
-      expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+      expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
       expect(screen.queryByTestId('cloud-day-close-content')).not.toBeInTheDocument();
     });
