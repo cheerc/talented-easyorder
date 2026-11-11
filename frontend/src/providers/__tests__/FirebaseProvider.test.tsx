@@ -653,9 +653,34 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
     expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
   });
 
+  it('O1: a probe result flagged offline masks and clears at once, without asking the server again to re-acquire', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '目前無法確認登入仍有效', offline: true });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.getLeaseStatus).not.toHaveBeenCalled();
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('O2: the decision follows the flag, not the wording: a denial whose text mentions a connection problem still goes through the re-acquire check', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(1));
+    leaseMocks.acquireLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() });
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '目前無法連線確認登入仍有效；回讀失敗；無法從伺服器確認' });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await waitFor(() => expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true }));
+  });
+
   it('V6a: a confirmed holder whose background probe goes offline masks and clears', async () => {
     const { hook, stopHeartbeat } = await confirmedHolder();
-    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '無法連線到伺服器，請稍後再試' });
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '無法連線到伺服器，請稍後再試', offline: true });
     setVisibility('hidden');
     nowMs = 61_000;
     setVisibility('visible');
