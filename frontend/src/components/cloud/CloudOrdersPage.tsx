@@ -2387,7 +2387,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                   </div>
                   <div className="cloud-orders__preview-bar">
                     <span>現金影響：<span className="mono">{refundValid ? `−$${refundAmount}` : '金額格式不正確'}</span></span>
-                    <span>退款後餘額：<span className="mono">{refundPreviewBalance === null ? '—' : `$${refundPreviewBalance}`}</span></span>
+                    <span>退款後餘額：<span className="mono">{refundPreviewBalance === null ? '—' : formatAccountBalance(refundPreviewBalance)}</span></span>
                   </div>
                   <div className="cloud-orders__actions cloud-orders__actions--submit">
                     <Button
@@ -2521,7 +2521,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         <div className="cloud-orders__modal-backdrop" role="dialog" aria-modal="true" aria-label="確認退款">
           <div className="cloud-orders__modal" data-testid="refund-confirm-modal">
             <h3>確認退款</h3>
-            <p>確定從 {selectedStudent.displayName} 的帳戶退還 ${refundAmount} 現金嗎？退款後餘額 ${refundPreviewBalance}</p>
+            <p>確定從 {selectedStudent.displayName} 的帳戶退還 ${refundAmount} 現金嗎？退款後餘額 {refundPreviewBalance === null ? '—' : formatAccountBalance(refundPreviewBalance)}</p>
             <div className="cloud-orders__actions">
               <Button onClick={submitRefund} data-testid="confirm-refund-button">
                 確認退款
