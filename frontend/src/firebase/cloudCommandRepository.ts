@@ -610,10 +610,10 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
 function leaseDenialResult(code: Diagnosis): CommandResult | null {
   if (code === null) return null;
   if (code === 'DAY_REOPENED_NO_MARKER') {
-    return errorResult('DAY_CLOSED', '這個營業日關過帳後重開，而且沒有回填標記，所以不能補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
+    return errorResult('DAY_CLOSED', '這個營業日關過帳後重開，而且沒有補登標記，所以不能補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
   }
   if (code === 'DAY_NOT_BACKFILLING') {
-    return errorResult('INVALID_INPUT', '這個過去的營業日沒有回填標記，不能補登；請先到日結頁把它標為回填');
+    return errorResult('INVALID_INPUT', '這個過去的營業日沒有補登標記，不能補登；請先到日結頁開始補登這一天');
   }
   if (code === 'REVISION_CONFLICT') {
     return errorResult(code, '資料已被其他操作更新；請重新載入，確認目前狀態後再操作。');
@@ -1298,10 +1298,10 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             const closeValues = input.payload as { countedCash: number; alignWithDayId?: string | null };
             const marked = (await tx.get(doc(db, backfillDayPath(dayId)))).exists();
             const aligned = Object.hasOwn(closeValues, 'alignWithDayId');
-            if (marked && !aligned) throw new RejectCommand('INVALID_INPUT', '回填日關帳必須指定對齊日（alignWithDayId）');
-            if (!marked && aligned) throw new RejectCommand('INVALID_INPUT', '這個營業日沒有回填標記，不能帶對齊日');
+            if (marked && !aligned) throw new RejectCommand('INVALID_INPUT', '補登日關帳必須指定對齊日（alignWithDayId）');
+            if (!marked && aligned) throw new RejectCommand('INVALID_INPUT', '這個營業日沒有補登標記，不能帶對齊日');
             if (marked && closeValues.countedCash !== expectedCash) {
-              throw new RejectCommand('INVALID_INPUT', `回填日關帳不得有差額（應有現金 ${expectedCash} 元）`);
+              throw new RejectCommand('INVALID_INPUT', `補登日關帳不得有差額（應有現金 ${expectedCash} 元）`);
             }
             if (typeof closeValues.alignWithDayId === 'string') {
               const alignSnapshot = await tx.get(doc(db, dayPath(closeValues.alignWithDayId)));
@@ -1397,13 +1397,13 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           const dayBefore = decodeDay(daySnapshot.data());
           checkRevision(dayBefore.revision, input.expectedRevisions.day, '營業日版本');
           if (dayBefore.status === 'closed' || dayBefore.lastSettlementRevision !== 0) {
-            throw new RejectCommand('DAY_CLOSED', '關過帳的營業日不能用回填修改');
+            throw new RejectCommand('DAY_CLOSED', '關過帳的營業日不能用補登修改');
           }
           requireDateAfterGoLive(dayId, String(headBefore.goLiveDate));
           const today = taipeiCalendarDate((leaseSnapshot.data() as Data).updatedAt as Timestamp);
-          if (dayId >= today) throw new RejectCommand('INVALID_INPUT', '只有今天以前的營業日可以回填；今天請直接登錄');
+          if (dayId >= today) throw new RejectCommand('INVALID_INPUT', '只有今天以前的營業日可以補登；今天請直接登錄');
           const markerRef = doc(db, backfillDayPath(dayId));
-          if ((await tx.get(markerRef)).exists()) throw new RejectCommand('INVALID_INPUT', '這個營業日已經在回填中');
+          if ((await tx.get(markerRef)).exists()) throw new RejectCommand('INVALID_INPUT', '這個營業日已經在補登中');
           const payload = input.payload as { reason: string };
           const marker: Data = {
             dayId, reason: payload.reason, startedBy: user.uid, startedAt: now, commandId: input.commandId,

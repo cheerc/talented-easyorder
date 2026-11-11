@@ -468,10 +468,10 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
       let backfill: CloudBackfillDay | null = null;
       if (businessDate !== today) {
         if (businessDate > today || businessDate < before.goLiveDate) {
-          throw new CloudOrderRepositoryError('INVALID_INPUT', `回填日期必須介於 ${before.goLiveDate} 與今天之前`);
+          throw new CloudOrderRepositoryError('INVALID_INPUT', `補登日期必須介於 ${before.goLiveDate} 與今天之前`);
         }
         backfill = await readCloudBackfillDay(db, businessDate);
-        if (!backfill) throw new CloudOrderRepositoryError('INVALID_INPUT', `${businessDate} 不在回填中，不能補登`);
+        if (!backfill) throw new CloudOrderRepositoryError('INVALID_INPUT', `${businessDate} 不在補登中，不能補登`);
       }
       const daySnapshot = await getDocFromServer(doc(db, dayPath(businessDate)));
       const day = daySnapshot.exists() ? decodeCloudDayRecord(businessDate, daySnapshot.data()) : null;

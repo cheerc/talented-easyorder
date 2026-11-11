@@ -613,7 +613,7 @@ async function loadRange(
     }
     const backfill = await readCloudBackfillDay(db, dayId);
     if (backfill && !day) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `回填營業日 ${dayId} 缺少營業日資料，請停止操作並聯絡維護者`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `補登營業日 ${dayId} 缺少營業日資料，請停止操作並聯絡維護者`);
     }
     const close = day && day.lastSettlementRevision > 0
       ? await readCloudDayClose(db, dayId, { currentUser: () => user })

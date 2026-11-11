@@ -334,7 +334,7 @@ function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, 
       || Object.hasOwn(state, `backfillDays/${dayId}`)
       || marker.startedBy !== actor.uid || !sameValue(marker.startedAt, record.committedAt)
       || marker.commandId !== record.commandId || marker.reason !== record.payload.reason) {
-      throw new BackupValidationError(`command seq ${record.seq} 回填標記與重播狀態不符`);
+      throw new BackupValidationError(`command seq ${record.seq} 補登標記與重播狀態不符`);
     }
     return;
   }
@@ -357,11 +357,11 @@ function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, 
     const marked = Object.hasOwn(state, `backfillDays/${dayId}`) && state[`backfillDays/${dayId}`] !== null;
     const align = record.payload.alignWithDayId;
     const aligned = Object.hasOwn(record.payload, 'alignWithDayId');
-    if (!marked && aligned) throw new BackupValidationError(`command seq ${record.seq} 沒有回填標記的營業日不得帶對齊日`);
+    if (!marked && aligned) throw new BackupValidationError(`command seq ${record.seq} 沒有補登標記的營業日不得帶對齊日`);
     if (!aligned) return;
     const settlement = after.settlement as Record<string, unknown> | undefined;
     if (!settlement || settlement.difference !== 0 || record.payload.countedCash !== settlement.expectedCash) {
-      throw new BackupValidationError(`command seq ${record.seq} 回填日關帳有差額`);
+      throw new BackupValidationError(`command seq ${record.seq} 補登日關帳有差額`);
     }
     if (align === null) return;
     const alignDay = typeof align === 'string' && align > dayId && Object.hasOwn(state, `days/${align}`)
@@ -381,7 +381,7 @@ function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, 
       const dayBefore = before.day as Record<string, unknown>;
       if (!Object.hasOwn(state, `backfillDays/${dayId}`) || state[`backfillDays/${dayId}`] === null
         || dayBefore.status === 'closed') {
-        throw new BackupValidationError(`command seq ${record.seq} 交易晚於營業日建立，但該日沒有較早的回填標記，或該日是關帳狀態`);
+        throw new BackupValidationError(`command seq ${record.seq} 交易晚於營業日建立，但該日沒有較早的補登標記，或該日是關帳狀態`);
       }
     }
   }
@@ -648,7 +648,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
         || before.backfill !== null || !isPlainRecord(after.backfill)
         || !hasExactlyKeys(after.backfill, ['dayId', 'reason', 'startedBy', 'startedAt', 'commandId'])
         || after.backfill.dayId !== targets!.dayId || !isSerializedTimestamp(after.backfill.startedAt)) {
-        throw new BackupValidationError(`command seq ${seq} 開始回填的 day／標記 projection 無效`);
+        throw new BackupValidationError(`command seq ${seq} 開始補登的 day／標記 projection 無效`);
       }
     }
     if (record.kind === 'RecordPostCloseEntry') {

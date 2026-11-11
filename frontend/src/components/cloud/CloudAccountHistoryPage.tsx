@@ -854,7 +854,7 @@ export function CloudAccountHistoryPage({
           <HelpTip label="餘額驗證說明">各筆餘額已由完整歷史驗證；日結版本另列，不視為交易當時餘額。</HelpTip></Callout>
 
         <section aria-labelledby="account-transactions-heading"><h3 id="account-transactions-heading">區間交易與更正入口</h3>
-          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th className="dt-num">金額</th><th className="dt-num">重算後餘額</th><th>狀態／回填</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
+          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th className="dt-num">金額</th><th className="dt-num">重算後餘額</th><th>狀態／補登</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
             {snapshot.account.transactions.map(transaction => {
               const day = rangeDayByDate.get(transaction.businessDate);
               const eligible = canMutate(transaction);
@@ -862,7 +862,7 @@ export function CloudAccountHistoryPage({
                 <td>{transaction.businessDate}<small>{formatTaipeiTime(transaction.createdAt)}</small></td>
                 <td>{transaction.type} · {transaction.transactionId}<details><summary>交易與稽核詳情</summary>
                   <dl><dt>最後修改命令</dt><dd>{transaction.lastCommandId}</dd><dt>建立者</dt><dd>{transaction.operatorUid} · {transaction.operatorEmail}</dd>
-                    <dt>當時菜單</dt><dd>{transaction.menuNameSnapshot} · {transaction.vendorNameSnapshot}</dd><dt>回填</dt><dd>{transaction.backfilled ? '是' : '否'}</dd>
+                    <dt>當時菜單</dt><dd>{transaction.menuNameSnapshot} · {transaction.vendorNameSnapshot}</dd><dt>補登</dt><dd>{transaction.backfilled ? '是' : '否'}</dd>
                     <dt>交易備註</dt><dd>{transaction.note || '—'}</dd></dl>
                   {snapshot.audit.rows.filter(row => row.studentId === selectedId && (row.commandId === transaction.lastCommandId
                     || JSON.stringify(row.before).includes(transaction.transactionId) || JSON.stringify(row.after).includes(transaction.transactionId)))
@@ -872,7 +872,7 @@ export function CloudAccountHistoryPage({
                 </details></td>
                 <td>{transaction.studentNameSnapshot}</td><td className="dt-num">{formatMoney(transaction.amount)} · 餐費 {formatMoney(transaction.mealPrice)} · 收款 {formatMoney(transaction.paidAmount)}</td>
                 <td className="dt-num">{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : <CloudAccountBalance amount={transaction.afterBalance} />}</td>
-                <td><StatusBadge variant={transaction.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}</StatusBadge>{transaction.backfilled && <> · <StatusBadge variant="warn" className="cloud-account-history__status">回填</StatusBadge></>}</td>
+                <td><StatusBadge variant={transaction.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}</StatusBadge>{transaction.backfilled && <> · <StatusBadge variant="warn" className="cloud-account-history__status">補登</StatusBadge></>}</td>
                 <td><StatusBadge variant={dayStatusVariant(day?.status)} className="cloud-account-history__status">{dayStatusLabel(day?.status)}</StatusBadge>{day?.lastSettlementRevision ? ` · 曾關帳第 ${day.lastSettlementRevision} 版` : ''}</td>
                 <td>{eligible ? (
                   <details className="cloud-account-history__more">

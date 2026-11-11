@@ -284,7 +284,8 @@ function formatServerTime(value: string | Date): string {
   return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'medium', timeStyle: 'medium' }).format(timestamp);
 }
 
-const BACKFILL_STEP_LABEL = { 'ensure-day': '建立營業日', 'backfill-opening': '補開帳', 'start-backfill': '標為回填' } as const;
+// 畫面用語「補登」＝程式／資料中的 backfill（`StartBackfill`、`backfillDays`、`backfilled`）；用語對照見日結契約開頭。
+const BACKFILL_STEP_LABEL = { 'ensure-day': '建立營業日', 'backfill-opening': '補開帳', 'start-backfill': '開始補登這一天' } as const;
 
 function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'ensure-day' || command.kind === 'start-backfill') return `${command.dayId} ${BACKFILL_STEP_LABEL[command.kind]}`;
@@ -305,14 +306,14 @@ function nextBackfillStep(
   const { day, backfill, dayId } = loaded;
   if (backfill) return null;
   if (day && (day.status !== 'open' || day.lastSettlementRevision !== 0)) {
-    return { blocked: `${dayId} 已經關過帳，不能用回填修改。` };
+    return { blocked: `${dayId} 已經關過帳，不能用補登修改。` };
   }
-  if (loaded.overview.selectionDate <= dayId) return { blocked: `${dayId} 不是過去的營業日，不能回填；今天請直接登錄。` };
+  if (loaded.overview.selectionDate <= dayId) return { blocked: `${dayId} 不是過去的營業日，不能補登；今天請直接登錄。` };
   const commandId = newCommandId();
   if (!commandId) return { blocked: '瀏覽器無法建立安全的命令編號，沒有送出操作。請重新載入安全連線後再試。' };
   if (!day) return { kind: 'ensure-day', commandId, dayId };
   if (day.openingCash === null) {
-    if (plan.openingCash === null) return { blocked: `${dayId} 還沒有開帳現金，請重新填寫回填表單。` };
+    if (plan.openingCash === null) return { blocked: `${dayId} 還沒有開帳現金，請重新填寫補登表單。` };
     return { kind: 'backfill-opening', commandId, dayId, expectedDayRevision: day.revision, openingCash: plan.openingCash, reason: plan.openingReason };
   }
   return { kind: 'start-backfill', commandId, dayId, expectedDayRevision: day.revision, reason: plan.reason };
@@ -712,7 +713,7 @@ export function CloudDayClosePage({
             ? String(Math.abs(initialEntry.difference))
             : previous.postCloseReference?.previousClosedDayId === dayId ? String(Math.abs(previous.postCloseReference.difference)) : '',
           postCloseReason: '',
-          notice: planDone ? `${confirmedText}。${dayId} 已標為回填，可以到訂餐頁補登交易。` : confirmedText,
+          notice: planDone ? `${confirmedText}。${dayId} 已開始補登這一天，可以到訂餐頁補登交易。` : confirmedText,
         };
       });
       // Once, after the accepted same-owner, same-dataset, same-day snapshot.
@@ -913,7 +914,7 @@ export function CloudDayClosePage({
         loading: false,
         loadError: `${commandLabel(failedCommand)}未完成：${errorMessage(result.error)}請重新載入伺服器資料後再確認。${
           stoppedPlan && failedPlanGeneration === stoppedPlan.generation
-            ? `回填 ${stoppedPlan.dayId} 停在這一步；已完成的步驟不會重做，重新載入後可以按「繼續回填」從這一步接著做。`
+            ? `開始補登 ${stoppedPlan.dayId} 停在這一步；已完成的步驟不會重做，重新載入後可以按「繼續」從這一步接著做。`
             : ''}`,
         actionError: result.error.code === 'LOCAL_STORAGE_UNAVAILABLE' ? errorMessage(result.error) : '',
         backfillPlan: stoppedPlan,
@@ -1272,7 +1273,7 @@ export function CloudDayClosePage({
     if (closeBlocked) {
       updatePage(previous => ({ ...previous, actionError: alignLookup?.status !== 'ready'
         ? '還沒查到要對齊的開帳日，請重新載入後再關帳。'
-        : `回填日的應有現金還差 ${Math.abs(alignGap ?? 0)} 元，請先回訂餐頁補登交易或收支，再回來關帳。` }));
+        : `補登日的應有現金還差 ${Math.abs(alignGap ?? 0)} 元，請先回訂餐頁補登交易或收支，再回來關帳。` }));
       return;
     }
     if (countedCash === null || !Number.isSafeInteger(countedCash) || countedCash > 1_000_000_000) {
@@ -1281,7 +1282,7 @@ export function CloudDayClosePage({
     }
     const note = page.note.trim();
     if (backfillClose && (countedCash !== day.expectedCash || countedCash !== alignTarget)) {
-      updatePage(previous => ({ ...previous, actionError: `回填日的實點必須等於 ${alignTarget === null ? '應有現金' : formatMoney(alignTarget)}，不接受差額說明。` }));
+      updatePage(previous => ({ ...previous, actionError: `補登日的實點必須等於 ${alignTarget === null ? '應有現金' : formatMoney(alignTarget)}，不接受差額說明。` }));
       return;
     }
     if (countedCash !== day.expectedCash && note.length < 1) {
@@ -1510,7 +1511,7 @@ export function CloudDayClosePage({
       backfillPlanRef.current = null;
       updatePage(previous => ({
         ...previous, backfillPlan: null,
-        actionError: '伺服器資料集、營業日或登入身分已改變，回填計畫已取消；沒有送出任何步驟。請重新載入後再開始。',
+        actionError: '伺服器資料集、營業日或登入身分已改變，補登計畫已取消；沒有送出任何步驟。請重新載入後再開始。',
       }));
       return;
     }
@@ -1537,14 +1538,14 @@ export function CloudDayClosePage({
     if (page.recovery || operationRef.current || !snapshot || showingStale || !canStartBackfill) return;
     const reason = page.startReason.trim();
     if (reason.length < 1 || reason.length > 500) {
-      updatePage(previous => ({ ...previous, actionError: '回填原因必須為 1 至 500 個字元。' }));
+      updatePage(previous => ({ ...previous, actionError: '補登原因必須為 1 至 500 個字元。' }));
       return;
     }
     let openingCash: number | null = null;
     let openingReason = reason;
     if (startOpeningNeeded) {
       if (snapshot.previous?.status !== 'ready') {
-        updatePage(previous => ({ ...previous, actionError: '還沒有確認上一個已關帳日的實點現金，請重新載入伺服器資料後再回填。' }));
+        updatePage(previous => ({ ...previous, actionError: '還沒有確認上一個已關帳日的實點現金，請重新載入伺服器資料後再補登。' }));
         return;
       }
       if (startOpeningCash === null || !Number.isSafeInteger(startOpeningCash) || startOpeningCash > 20_000) {
@@ -1654,7 +1655,7 @@ export function CloudDayClosePage({
           授權狀態已失效。日結資料與操作草稿已清除；請重新登入並取得有效使用權。
         </div>
       )}
-      <Toast message={page.notice} durationMs={/已標為回填/.test(page.notice) ? 8000 : 4000} />
+      <Toast message={page.notice} durationMs={/已開始補登這一天/.test(page.notice) ? 8000 : 4000} />
 
       {showRecoveryPanel && page.recovery && (
         <section className="cloud-day-close__recovery" aria-label="命令結果確認" role="alert">
@@ -1796,7 +1797,7 @@ export function CloudDayClosePage({
                 <h2>{snapshot.dayId} 日結</h2>
                 {day ? (
                   day.lastSettlementRevision > 0 ? <p>日結版本 {day.lastSettlementRevision}</p> : null
-                ) : <p>{canStartBackfill ? '伺服器沒有這個日期的營業日。如果那天其實有營業，可以在下方回填。' : '伺服器沒有這個日期的營業日，不需關帳。'}</p>}
+                ) : <p>{canStartBackfill ? '伺服器沒有這個日期的營業日。如果那天其實有營業，可以在下方補登。' : '伺服器沒有這個日期的營業日，不需關帳。'}</p>}
               </div>
             </div>
 
@@ -1804,19 +1805,19 @@ export function CloudDayClosePage({
 
             {snapshot.backfill && (
               <p className="cloud-day-close__backfill-status" data-testid="backfill-info">
-                回填中 · 原因：{snapshot.backfill.reason}
+                補登中 · 原因：{snapshot.backfill.reason}
                 {day?.status === 'reopened' && ' 這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。'}
-                <HelpTip label="回填說明">補登的訂餐、繳費與櫃台收支都記在這一天並標為「回填」；補完後在這一頁核對現金再關帳。</HelpTip>
+                <HelpTip label="補登說明">補登的訂餐、繳費與櫃台收支都記在這一天並標為「補登」；補完後在這一頁核對現金再關帳。</HelpTip>
               </p>
             )}
 
             {page.backfillPlan && page.backfillPlan.dayId === snapshot.dayId && !snapshot.backfill && (
-              <section className="cloud-day-close__recovery" aria-label="回填進度" role="alert" data-testid="backfill-plan-panel">
-                <strong>回填 {snapshot.dayId} 還沒完成。</strong>
+              <section className="cloud-day-close__recovery" aria-label="補登進度" role="alert" data-testid="backfill-plan-panel">
+                <strong>開始補登 {snapshot.dayId} 還沒完成。</strong>
                 <span>已經在伺服器上確認的步驟不會重做，下一步會依伺服器現況決定。</span>
                 <div className="cloud-day-close__actions">
                   <button type="button" className="cloud-day-close__primary" onClick={continueBackfill} disabled={busy} data-testid="backfill-continue">
-                    繼續回填
+                    繼續
                   </button>
                   <button
                     type="button"
@@ -1824,29 +1825,29 @@ export function CloudDayClosePage({
                     onClick={abandonBackfill}
                     disabled={busy}
                   >
-                    放棄回填
+                    放棄
                   </button>
                 </div>
               </section>
             )}
 
             {canStartBackfill && !page.backfillPlan && (
-              <section className="cloud-day-close__card" aria-label="回填這一天" data-testid="backfill-start">
+              <section className="cloud-day-close__card" aria-label="開始補登這一天" data-testid="backfill-start">
                 <h3>
-                  {day ? '標為回填，補登剩下的交易' : '回填這一天'}
-                  <HelpTip label="回填說明">
+                  {day ? '開始補登這一天，補登剩下的交易' : '開始補登這一天'}
+                  <HelpTip label="補登說明">
                     {day
                       ? '標記後這一天可以補登訂餐、繳費與櫃台收支，原因與操作者會留下紀錄。'
-                      : '會依序建立營業日、補開帳、標為回填；任何一步失敗都會停在那一步，已完成的步驟不會重做。'}
+                      : '會依序建立營業日、補開帳、開始補登這一天；任何一步失敗都會停在那一步，已完成的步驟不會重做。'}
                   </HelpTip>
                 </h3>
                 <form
                   className="cloud-day-close__form"
-                  aria-label={`${snapshot.dayId} ${day ? '標為回填' : '回填'}`}
+                  aria-label={`${snapshot.dayId} 開始補登這一天`}
                   onSubmit={submitStartBackfill}
                 >
                   <label>
-                    回填原因（必填，最多 500 字）
+                    補登原因（必填，最多 500 字）
                     <textarea
                       className="cloud-day-close__input"
                       rows={2}
@@ -1906,10 +1907,10 @@ export function CloudDayClosePage({
                       className="cloud-day-close__primary"
                       disabled={busy || (startOpeningNeeded && snapshot.previous?.status !== 'ready')}
                     >
-                      {day ? '確認標為回填' : '確認回填這一天'}
+                      確認開始補登這一天
                     </button>
                   </div>
-                  <Callout variant="warn">已經關過帳的日子不能回填。</Callout>
+                  <Callout variant="warn">已經關過帳的日子不能補登。</Callout>
                 </form>
               </section>
             )}
@@ -1999,7 +2000,7 @@ export function CloudDayClosePage({
                           </p>
                           {alignGap !== null && alignGap !== 0 && (
                             <p role="alert" data-testid="backfill-align-gap">
-                              差 {formatMoney(Math.abs(alignGap))}，不能關帳。請回到訂餐頁的回填模式，補登 {snapshot.dayId} 缺的交易，或補記收支（含呆帳）後再回來。
+                              差 {formatMoney(Math.abs(alignGap))}，不能關帳。請回到訂餐頁的補登模式，補登 {snapshot.dayId} 缺的交易，或補記收支（含呆帳）後再回來。
                             </p>
                           )}
                         </div>

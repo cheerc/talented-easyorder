@@ -1041,7 +1041,7 @@ export function CloudReportPage({
               <option value="original">原始交易</option><option value="merged">合併交易</option></select></label>
 </div>
           </div>
-          <div className="dt-wrap"><table className="dt"><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th className="dt-num">金額／份數</th><th className="dt-num">完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
+          <div className="dt-wrap"><table className="dt"><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th className="dt-num">金額／份數</th><th className="dt-num">完整歷史餘額</th><th>操作者／台北時間</th><th>補登／說明</th></tr></thead>
             <tbody>{visibleRows.length === 0 ? (
               <tr><td colSpan={9}><EmptyState className="cloud-report__empty" title="此範圍沒有帳戶交易。" /></td></tr>
             ) : visibleRows.map(row => {
@@ -1056,7 +1056,7 @@ export function CloudReportPage({
                 <td className="dt-num">{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
                 <td className="dt-num">{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} />}</td>
                 <td>{raw.map(item => <div key={item.transactionId}>{item.operatorEmail} · {taipeiTime(item.createdAt)}</div>)}</td>
-                <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{raw.map(item => item.note && <small key={`note:${item.transactionId}`}>{item.note}</small>)}</td>
+                <td>{row.backfilled ? '補登' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{raw.map(item => item.note && <small key={`note:${item.transactionId}`}>{item.note}</small>)}</td>
               </tr>;
             })}</tbody></table></div>
           <div className="cloud-report__pager"><button type="button" disabled={controlsLocked || pageNumber === 0} onClick={() => setPageNumber(value => value - 1)}>上一頁</button>

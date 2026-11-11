@@ -458,7 +458,7 @@ export async function readCloudBackfillDay(db: Firestore, dayId: string): Promis
   try {
     if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日格式不支援');
     const snapshot = await getDocFromServer(doc(db, backfillDayPath(dayId)));
-    assertServerConfirmed(snapshot, `回填標記 ${dayId}`);
+    assertServerConfirmed(snapshot, `補登標記 ${dayId}`);
     return snapshot.exists() ? decodeBackfill(dayId, snapshot.data()) : null;
   } catch (error) {
     throw readError(error);
