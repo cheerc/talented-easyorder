@@ -1640,7 +1640,7 @@ test.describe('P11c2b Cloud Backfill', () => {
     // A past open business day that was never marked: the situation after a whole day without the system.
     await upsertDocument('system', 'dataHead', { goLiveDate: shift(today, -3) });
     await upsertDocument('students', studentId, {
-      studentId, studentCode: '901', displayName: '回填測試生', aliases: [], status: 'active',
+      studentId, studentCode: '901', displayName: '補登測試生', aliases: [], status: 'active',
       openingBalance: { amount: 100, asOfDate: shift(today, -3), note: '', createdAt: new Date() },
       currentBalance: 100, createdAt: new Date(), revision: 1,
       lastCommandId: '00000000-0000-4000-8000-0000000000e1', updatedAt: new Date(),
@@ -1675,26 +1675,27 @@ test.describe('P11c2b Cloud Backfill', () => {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toBeVisible();
 
-      // 1. 異常頁：過去沒關帳的日子有「標為回填」
+      // 1. 異常頁：過去沒關帳的日子有「開始補登這一天」
       await accountCheck(page);
       await page.getByTestId(`anomaly-mark-backfill-${gap}`).click();
 
-      // 2. 日結頁：回填原因必填，標記成功後可以到訂餐頁
+      // 2. 日結頁：補登原因必填，標記成功後可以到訂餐頁
       const main = page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${gap} 日結` })).toBeVisible();
-      const form = main.getByRole('form', { name: `${gap} 標為回填` });
-      await form.getByRole('button', { name: '確認標為回填' }).click();
+      const form = main.getByRole('form', { name: `${gap} 開始補登這一天` });
+      await form.getByRole('button', { name: '確認開始補登這一天' }).click();
       // The empty reason is stopped in the form (native required); nothing reaches the server.
       expect(await readAdminDocument('backfillDays', gap)).toBeNull();
-      await form.getByRole('textbox', { name: /回填原因/ }).fill('前天停電沒有用系統');
-      await form.getByRole('button', { name: '確認標為回填' }).click();
-      await expect(main.getByText(/已標為回填，可以到訂餐頁補登交易/)).toBeVisible();
+      await form.getByRole('textbox', { name: /補登原因/ }).fill('前天停電沒有用系統');
+      await form.getByRole('button', { name: '確認開始補登這一天' }).click();
+      await expect(main.getByText(/已開始補登這一天，可以到訂餐頁補登交易/)).toBeVisible();
       expect(await readAdminDocument('backfillDays', gap)).toMatchObject({ dayId: gap, reason: '前天停電沒有用系統' });
 
       // 3. 訂餐頁：橫幅、其他餐點、退款停用
       await main.getByTestId('backfill-align-orders').click();
       const orders = page.getByTestId('cloud-orders-page');
-      await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${gap}（原因：前天停電沒有用系統）`);
+      await expect(orders.getByTestId('backfill-banner')).toContainText(`正在補登 ${gap}`);
+      await expect(orders.getByTestId('backfill-banner')).toContainText('原因：前天停電沒有用系統');
       await orders.getByLabel('搜尋編號、姓名或別名').fill('901');
       await orders.getByTestId('search-result-901').click();
       await orders.getByRole('button', { name: '其他餐點' }).click();
@@ -1704,8 +1705,8 @@ test.describe('P11c2b Cloud Backfill', () => {
       await expect(orders.getByLabel(/紙本號/)).toHaveCount(0);
       await orders.getByLabel('備註（選填）').fill('停電補登');
       await orders.getByTestId('submit-order-button').click();
-      await expect(orders.getByText(/已確認 901 回填測試生 訂餐完成/)).toBeVisible();
-      await expect(orders.getByTestId('backfill-tag-recent-901')).toContainText('回填');
+      await expect(orders.getByText(/已確認 901 補登測試生 訂餐完成/)).toBeVisible();
+      await expect(orders.getByTestId('backfill-tag-recent-901')).toContainText('補登');
       await orders.getByLabel('搜尋編號、姓名或別名').fill('901');
       await orders.getByTestId('search-result-901').click();
       await orders.getByRole('button', { name: '繳費' }).click();
@@ -1716,10 +1717,10 @@ test.describe('P11c2b Cloud Backfill', () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ type: 'order', mealKind: 'other', mealPrice: 70, otherItemName: '補登炒麵', note: '停電補登' });
       await orders.getByTestId('open-payment-details-button').click();
-      await expect(orders.getByTestId(`backfill-tag-${rows[0].id}`)).toContainText('回填');
+      await expect(orders.getByTestId(`backfill-tag-${rows[0].id}`)).toContainText('補登');
       await expect(orders.getByTestId(`paper-tag-${rows[0].id}`)).toHaveCount(0);
 
-      // 4. 離開回填：回到今天，橫幅消失
+      // 4. 按「回到今天」：回到今天，橫幅消失
       await page.keyboard.press('Escape');
       await orders.getByTestId('leave-backfill-button').click();
       await expect(orders.getByTestId('backfill-banner')).toHaveCount(0);
@@ -1799,24 +1800,24 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       await expect(page.locator('.operator-strip')).toBeVisible();
       expect(await readAdminDocument('days', gap)).toBeNull();
 
-      // 1. 異常頁：開帳 970 與上次關帳 870 不符，中間的空日有「回填這一天」
+      // 1. 異常頁：開帳 970 與上次關帳 870 不符，中間的空日有「開始補登這一天」
       await accountCheck(page);
       await page.getByTestId(`backfill-gap-${gap}`).click();
 
       // 2. 日結頁三步：建日 → 補開帳（預設 870）→ 標記，一次表單送出
       const main = page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${gap} 日結` })).toBeVisible();
-      const form = main.getByRole('form', { name: `${gap} 回填` });
+      const form = main.getByRole('form', { name: `${gap} 開始補登這一天` });
       await expect(form.getByRole('textbox', { name: /開帳現金（元）/ })).toHaveValue('870');
-      await form.getByRole('textbox', { name: /回填原因/ }).fill('那天網路中斷，整天沒有用系統');
-      await form.getByRole('button', { name: '確認回填這一天' }).click();
-      await expect(main.getByText(/已標為回填，可以到訂餐頁補登交易/)).toBeVisible();
+      await form.getByRole('textbox', { name: /補登原因/ }).fill('那天網路中斷，整天沒有用系統');
+      await form.getByRole('button', { name: '確認開始補登這一天' }).click();
+      await expect(main.getByText(/已開始補登這一天，可以到訂餐頁補登交易/)).toBeVisible();
       expect(await readAdminDocument('days', gap)).toMatchObject({ status: 'open', openingCash: 870, lastSettlementRevision: 0 });
       expect(await readAdminDocument('backfillDays', gap)).toMatchObject({ dayId: gap, reason: '那天網路中斷，整天沒有用系統' });
       const kinds = (await listAdminDocuments('commands')).filter(item => item.businessDate === gap).map(item => item.kind).sort();
       expect(kinds).toEqual(['BackfillOpeningCash', 'EnsureDay', 'StartBackfill']);
 
-      // 3. 關帳區：須等於 later 的開帳 970，目前應有 870，差 100，關帳停用並引導回填
+      // 3. 關帳區：須等於 later 的開帳 970，目前應有 870，差 100，關帳停用並引導補登
       await expect(main.getByTestId('backfill-align-target')).toContainText(`須等於 ${later} 的開帳現金 NT$ 970`);
       await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 100，不能關帳');
       const closeForm = main.getByRole('form', { name: `${gap} 關帳` });
@@ -1832,7 +1833,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
         }
         await main.getByTestId('backfill-align-orders').click();
         const orders = page.getByTestId('cloud-orders-page');
-        await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${gap}`);
+        await expect(orders.getByTestId('backfill-banner')).toContainText(`正在補登 ${gap}`);
         await orders.getByLabel('搜尋編號、姓名或別名').fill('902');
         await orders.getByTestId('search-result-902').click();
         await orders.getByRole('button', { name: '繳費' }).click();

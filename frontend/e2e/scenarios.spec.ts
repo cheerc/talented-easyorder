@@ -191,7 +191,7 @@ test.describe('具名業務情境 fixtures', () => {
     }
   });
 
-  test('回填中：櫃台可切換到回填日並顯示回填橫幅', async ({ googleSession }) => {
+  test('補登中：櫃台可切換到補登日並顯示補登橫幅', async ({ googleSession }) => {
     const { page } = googleSession;
     const scenario = await seedBackfillInProgress();
     try {
@@ -202,7 +202,8 @@ test.describe('具名業務情境 fixtures', () => {
       await expect(select).toBeVisible();
       await expect(orders.getByTestId('backfill-banner')).toHaveCount(0);
       await select.selectOption(scenario.dayId);
-      await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${scenario.dayId}（原因：${scenario.reason}）`);
+      await expect(orders.getByTestId('backfill-banner')).toContainText(`正在補登 ${scenario.dayId}`);
+      await expect(orders.getByTestId('backfill-banner')).toContainText(`原因：${scenario.reason}`);
     } finally {
       await scenario.cleanup();
     }

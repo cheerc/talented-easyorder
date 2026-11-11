@@ -754,12 +754,12 @@ describe('CloudReportPage', () => {
       });
     };
 
-    it('shows each row\'s whole note as written, with no number tag; 回填 stays', async () => {
+    it('shows each row\'s whole note as written, with no number tag; 補登 stays', async () => {
       await withFormerPrefixes();
       const { container } = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:paper-original" />);
       const note = await screen.findByText('紙本A-0001：前天補登');
       const row = note.closest('tr')!;
-      expect(row).toHaveTextContent('回填');
+      expect(row).toHaveTextContent('補登');
       expect(screen.getByText('紙本B-0002：')).toBeVisible();
       expect(screen.queryByTestId('report-paper-refs-transaction-order')).toBeNull();
       expect(container.querySelector('.cloud-report__paper-tag')).toBeNull();

@@ -68,7 +68,7 @@ const transaction = {
 const days = [{ businessDate: date, exists: true, status: 'open', revision: 3, openingCash: 100,
   totals: { activeTransactionCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 55,
     retainedReceipts: 20, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 },
-  lastSettlementRevision: 0, backfillReason: '歷史回填', settlements: [], postCloseEntries: [], effectiveCash: null }] as unknown as CloudReportDay[];
+  lastSettlementRevision: 0, backfillReason: '歷史補登', settlements: [], postCloseEntries: [], effectiveCash: null }] as unknown as CloudReportDay[];
 const account = {
   datasetId: 'dataset-a', sourceSeq: 11, goLiveDate: '2026-10-01', leaseToday: '2026-10-19', leaseEpoch: 4,
   range, scope: { studentId }, complete: true, student: { studentId, studentCode: '001', displayName: '林小明', aliases: ['小明'] },
@@ -229,7 +229,7 @@ describe('CloudAccountHistoryPage', () => {
     const transactionRow = within(transactionSection).getAllByRole('row')[1];
     const statusCell = within(transactionRow).getAllByRole('cell')[5];
     expect(within(statusCell).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
-    expect(within(statusCell).getByText('回填')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(statusCell).getByText('補登')).toHaveClass('badge-ui', 'badge-warn');
     openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
     expect(screen.getByRole('form', { name: '歷史交易更正' })).not.toHaveTextContent(/固定交易版本|學生版本|日期版本/);

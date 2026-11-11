@@ -87,7 +87,7 @@ describe('DateField（#690：共用單日營業日控制項）', () => {
   });
 
   describe('select variant', () => {
-    const options = [{ value: '', label: '今天（2026-10-16）' }, { value: '2026-10-14', label: '回填中 2026-10-14' }];
+    const options = [{ value: '', label: '今天（2026-10-16）' }, { value: '2026-10-14', label: '補登中 2026-10-14' }];
 
     it('renders the caller options under the same 「營業日」 label and confirms on change', () => {
       const onConfirm = vi.fn();
@@ -95,7 +95,7 @@ describe('DateField（#690：共用單日營業日控制項）', () => {
       const select = screen.getByLabelText('營業日');
       expect(select.tagName).toBe('SELECT');
       expect(select).toHaveAttribute('data-testid', 'orders-day-select');
-      expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual(['今天（2026-10-16）', '回填中 2026-10-14']);
+      expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual(['今天（2026-10-16）', '補登中 2026-10-14']);
       fireEvent.change(select, { target: { value: '2026-10-14' } });
       expect(onConfirm).toHaveBeenCalledWith('2026-10-14');
     });
