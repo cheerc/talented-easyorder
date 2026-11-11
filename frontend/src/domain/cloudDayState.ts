@@ -24,7 +24,8 @@ export function dayStateLabel({ status, backfill, kind, dayId, today }: DayState
   if (status === 'closed') return { text: '已關帳', variant: 'ok' };
   if (backfill) return { text: status === 'reopened' ? '回填中（已重開）' : '回填中', variant: 'warn' };
   if (status === 'reopened') return { text: '已重開', variant: 'warn' };
-  if (kind === 'missing-opening') return { text: '待確認開帳', variant: 'warn' };
+  // Only today and past days wait for their opening; a future day is just scheduled, so it keeps the plain wording.
+  if (kind === 'missing-opening' && dayId <= today) return { text: '待確認開帳', variant: 'warn' };
   // A day with neither opening cash nor transactions has nothing to close, so it keeps the plain wording.
   if (kind !== 'no-business' && dayId < today) return { text: '尚未關帳', variant: 'warn' };
   return { text: '開啟中', variant: 'warn' };
