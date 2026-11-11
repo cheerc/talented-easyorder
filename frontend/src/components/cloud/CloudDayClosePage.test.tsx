@@ -1087,8 +1087,11 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     const info = await screen.findByTestId('backfill-info');
     expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
     expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
-    expect(screen.getByTestId(`cloud-unclosed-backfill-${gap}`)).toHaveTextContent('回填中');
-    expect(within(screen.getByTestId(`cloud-unclosed-backfill-${gap}`)).getByText('回填中')).toHaveClass('badge-ui', 'badge-warn');
+    // The viewed day is not repeated in the banner (#688): its state is shown by the date row.
+    expect(screen.queryByTestId(`cloud-unclosed-backfill-${gap}`)).not.toBeInTheDocument();
+    const state = screen.getByTestId('cloud-day-state');
+    expect(within(state).getByText('回填中')).toHaveClass('badge-ui', 'badge-warn');
+    expect(state).toHaveTextContent('過去日期');
     fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
@@ -1106,9 +1109,8 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     const info = await screen.findByTestId('backfill-info');
     expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
     expect(info).toHaveTextContent('這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。');
-    const row = screen.getByTestId(`cloud-unclosed-${gap}`);
-    expect(within(row).getByText('回填中（已重開）')).toHaveClass('badge-ui', 'badge-warn');
-    expect(row).toHaveTextContent('2 筆交易');
+    expect(screen.queryByTestId(`cloud-unclosed-${gap}`)).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('cloud-day-state')).getByText('回填中（已重開）')).toHaveClass('badge-ui', 'badge-warn');
     fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
@@ -1119,7 +1121,8 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     renderAt(gap, { onOpenOrders: vi.fn() });
     const info = await screen.findByTestId('backfill-info');
     expect(info).not.toHaveTextContent('關過帳後重開');
-    expect(within(screen.getByTestId(`cloud-unclosed-${gap}`)).getByText('回填中')).toBeInTheDocument();
+    expect(screen.queryByTestId(`cloud-unclosed-${gap}`)).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('cloud-day-state')).getByText('回填中')).toBeInTheDocument();
   });
 
   it.each([
@@ -2381,5 +2384,99 @@ describe('CloudDayClosePage: F2 今日 layout and date auto-load (#648 P4)', () 
       renderWith();
       expect((await screen.findByText(/尚未確認開帳現金，不能關帳/)).closest('.callout-ui')).toHaveClass('callout-warn');
     });
+  });
+});
+
+describe('CloudDayClosePage: the banner and the no-business list leave out the viewed day (#688)', () => {
+  const gap = '2026-10-14';
+  const earlier = '2026-10-13';
+  const quiet = '2026-10-10';
+  const marker = {
+    dayId: gap, reason: '那天斷線', startedBy: 'uid-a', startedAt: new Date('2026-10-17T01:00:00.000Z'), commandId: '00000000-0000-4000-8000-0000000000c1',
+  };
+  type Entry = CloudDayCloseOverview['unclosedDays'][number];
+  const needsClose = (dayId: string, extra: Partial<Entry> = {}): Entry => ({
+    dayId, status: 'open', openingCash: 500, activeTransactionCount: 2, kind: 'needs-close', backfill: null, ...extra,
+  });
+  const noBusiness = (dayId: string): Entry => ({ dayId, status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'no-business', backfill: null });
+
+  function serve(entries: Entry[]) {
+    repository.readOverview.mockResolvedValue(overview({ unclosedDays: entries }));
+    repository.read.mockImplementation(async (dayId: string) => {
+      const entry = entries.find(item => item.dayId === dayId);
+      if (!entry) return dayState({ dayId });
+      return dayState({
+        dayId, status: entry.status, openingCash: entry.openingCash, expectedCash: entry.openingCash,
+        totals: { ...dayState().totals, activeTransactionCount: entry.activeTransactionCount },
+      });
+    });
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.readCommand.mockResolvedValue(null);
+    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 20 });
+    repository.findNextOpened.mockResolvedValue({ next: null, seq: 20 });
+    repository.readLedger.mockResolvedValue({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
+  });
+
+  it('lists the only unclosed past day from another day, and shows nothing for it while viewing it', async () => {
+    serve([needsClose(gap, { backfill: marker })]);
+    renderPage();
+    const banner = await screen.findByLabelText('未關帳營業日');
+    expect(banner).toHaveTextContent('過去有 1 天還沒關帳');
+    expect(within(banner).getByTestId(`cloud-unclosed-${gap}`)).toBeEnabled();
+    fireEvent.click(within(banner).getByTestId(`cloud-unclosed-${gap}`));
+    expect(await screen.findByRole('heading', { name: `${gap} 日結` })).toBeInTheDocument();
+    expect(screen.queryByLabelText('未關帳營業日')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`cloud-unclosed-${gap}`)).not.toBeInTheDocument();
+    expect(screen.getByText('過去沒有未關帳的日子')).toBeInTheDocument();
+    const state = screen.getByTestId('cloud-day-state');
+    expect(state).toHaveTextContent('回填中');
+    expect(state).toHaveTextContent('過去日期');
+  });
+
+  it('counts and lists the other unclosed past days while viewing one of them', async () => {
+    serve([needsClose(earlier), needsClose(gap, { backfill: marker })]);
+    renderPage({ initialDayId: gap });
+    const banner = await screen.findByLabelText('未關帳營業日');
+    expect(banner).toHaveTextContent('過去有 1 天還沒關帳');
+    expect(within(banner).getByTestId(`cloud-unclosed-${earlier}`)).toBeInTheDocument();
+    expect(within(banner).queryByTestId(`cloud-unclosed-${gap}`)).not.toBeInTheDocument();
+  });
+
+  it('leaves the viewed day out of the no-business list, and hides the list when nothing else is left', async () => {
+    serve([noBusiness(quiet)]);
+    renderPage();
+    const list = await screen.findByTestId('cloud-no-business-days');
+    expect(within(list).getByTestId(`cloud-no-business-${quiet}`)).toBeEnabled();
+    fireEvent.click(within(list).getByTestId(`cloud-no-business-${quiet}`));
+    expect(await screen.findByRole('heading', { name: `${quiet} 日結` })).toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-no-business-days')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`cloud-no-business-${quiet}`)).not.toBeInTheDocument();
+  });
+
+  it('still lists other no-business days while viewing one of them', async () => {
+    serve([noBusiness(quiet), noBusiness('2026-10-09')]);
+    renderPage({ initialDayId: quiet });
+    const list = await screen.findByTestId('cloud-no-business-days');
+    expect(within(list).getByTestId('cloud-no-business-2026-10-09')).toBeInTheDocument();
+    expect(within(list).queryByTestId(`cloud-no-business-${quiet}`)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a backfilling day', needsClose(gap, { backfill: marker }), '回填中'],
+    ['a reopened backfilling day', needsClose(gap, { status: 'reopened', backfill: marker }), '回填中（已重開）'],
+    ['a reopened day', needsClose(gap, { status: 'reopened' }), '已重開'],
+    ['a day waiting for its opening cash', needsClose(gap, { openingCash: null, kind: 'missing-opening' }), '待確認開帳'],
+  ])('uses the same state text in the banner chip and in the date row for %s', async (_label, entry, text) => {
+    serve([entry]);
+    renderPage();
+    const chip = await screen.findByTestId(`cloud-unclosed-${gap}`);
+    expect(within(chip).getByText(text)).toHaveClass('badge-ui', 'badge-warn');
+    fireEvent.click(chip);
+    expect(await screen.findByRole('heading', { name: `${gap} 日結` })).toBeInTheDocument();
+    expect(within(screen.getByTestId('cloud-day-state')).getByText(text)).toHaveClass('badge-ui', 'badge-warn');
   });
 });
