@@ -207,3 +207,56 @@ describe('subscribeOperatorAccess — signOut race (#301)', () => {
     expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'unverified_email' }));
   });
 });
+
+describe('subscribeOperatorAccess — token refresh is not a new sign-in (#691 P9 r3)', () => {
+  const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
+  const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
+  const verified = (uid: string) => ({
+    uid, email: `${uid}@gmail.com`, displayName: uid, emailVerified: true,
+    providerData: [{ providerId: 'google.com' }],
+  });
+  const reasons = (onAccess: ReturnType<typeof vi.fn>) => onAccess.mock.calls.map(call => (call[0] as { ok: boolean; reason?: string }).reason ?? 'ok');
+
+  it('a token refresh of the same account emits no “checking”, keeps the one operator subscription, and a revocation still denies', async () => {
+    const onAccess = vi.fn();
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    await callback(verified('u1'));
+    const operatorSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+    operatorSnapshot({ data: () => ({ uid: 'u1', email: 'u1@gmail.com', active: true }) });
+    expect(reasons(onAccess)).toEqual(['checking', 'ok']);
+    const unsubscribeOperator = mocks.mockOnSnapshot.mock.results[0]?.value as (() => void) | undefined;
+
+    await callback(verified('u1'));
+    await callback(verified('u1'));
+
+    expect(reasons(onAccess)).toEqual(['checking', 'ok']);
+    expect(mocks.mockOnSnapshot).toHaveBeenCalledTimes(1);
+    if (typeof unsubscribeOperator === 'function') expect(unsubscribeOperator).not.toHaveBeenCalled();
+
+    // The kept subscription still delivers a later revocation.
+    operatorSnapshot({ data: () => ({ uid: 'u1', email: 'u1@gmail.com', active: false }) });
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'inactive' }));
+  });
+
+  it('a different account and the first sign-in still start with “checking”; signing out is unchanged', async () => {
+    const onAccess = vi.fn();
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    await callback(null);
+    expect(reasons(onAccess)).toEqual(['checking', 'signed_out']);
+
+    await callback(verified('u1'));
+    expect(reasons(onAccess).slice(2)).toEqual(['checking']);
+    expect(mocks.mockOnSnapshot).toHaveBeenCalledTimes(1);
+
+    await callback(verified('u2'));
+    expect(reasons(onAccess).slice(3)).toEqual(['checking']);
+    expect(mocks.mockOnSnapshot).toHaveBeenCalledTimes(2);
+
+    await callback(null);
+    expect(reasons(onAccess).slice(4)).toEqual(['checking', 'signed_out']);
+    await callback(verified('u2'));
+    expect(reasons(onAccess).slice(6)).toEqual(['checking']);
+  });
+});

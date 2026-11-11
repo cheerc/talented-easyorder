@@ -1,6 +1,7 @@
 // #648/#650/#652：真 App + demo-easyorder Emulator；只使用合成資料，不提交截圖。
 import { test, expect } from './fixtures';
 import { accountCheck, settings } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 import { seedAccessLease } from './helpers/seed';
 import { JOURNAL_NAMESPACE, clearLeftoverBusinessState, seedAdjacentCashGap, seedBackfillInProgress, seedOpenDayWithMenu, seedPendingCommand, seedUnopenedPastDay, type ScenarioHandle } from './helpers/scenarios';
 import type { Locator, Page } from '@playwright/test';
@@ -102,7 +103,7 @@ for (const theme of ['light', 'dark', 'warm']) {
         const { page } = googleSession;
         const gap = await seedAdjacentCashGap();
         scenario = gap;
-        await page.getByRole('button', { name: '開始使用' }).click();
+        await enterSystem(page, { reload: true });
         await expect(page.locator('.operator-strip')).toBeVisible();
         // App 的主題控制可能覆寫初始屬性；量測前明確設定本輪主題。
         await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); document.body.setAttribute('data-theme', t); }, theme);
@@ -150,7 +151,7 @@ for (const theme of ['light', 'dark', 'warm']) {
         const pendingScenario = await seedPendingCommand(page, uid);
         scenario = pendingScenario;
         const commandId = pendingScenario.commandId;
-        await page.getByRole('button', { name: '開始使用' }).click();
+        await enterSystem(page, { reload: true });
         const pending = page.locator('.cloud-pending-recovery');
         await pending.getByText('技術資訊').click();
         await expect(pending.getByText(commandId)).toBeVisible();
@@ -187,7 +188,7 @@ for (const theme of ['light', 'dark', 'warm']) {
         await clearLeftoverBusinessState();
         const open = await seedOpenDayWithMenu();
         scenario = open;
-        await page.getByRole('button', { name: '開始使用' }).click();
+        await enterSystem(page, { reload: true });
         await expect(page.locator('.operator-strip')).toBeVisible();
         await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); document.body.setAttribute('data-theme', t); }, theme);
         await page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台', exact: true }).click();
@@ -201,7 +202,7 @@ for (const theme of ['light', 'dark', 'warm']) {
         await clearLeftoverBusinessState();
         const unopened = await seedUnopenedPastDay();
         scenario = unopened;
-        await page.getByRole('button', { name: '開始使用' }).click();
+        await enterSystem(page, { reload: true });
         await expect(page.locator('.operator-strip')).toBeVisible();
         await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); document.body.setAttribute('data-theme', t); }, theme);
         await page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '今日帳', exact: true }).click();
@@ -317,7 +318,7 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
     const { page } = googleSession;
     scenarios.push(await seedAdjacentCashGap());
     scenarios.push(await seedBackfillInProgress());
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page, { reload: true });
     await expect(page.locator('.operator-strip')).toBeVisible();
     const nav = page.getByRole('navigation', { name: '主要導覽' });
 

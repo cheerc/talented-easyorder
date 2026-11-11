@@ -1,11 +1,10 @@
 import { test, expect } from './fixtures';
 import { settings, release } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 
 test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ googleSession }) => {
   const { page } = googleSession;
-  const acquire = page.getByRole('button', { name: '開始使用' });
-  await expect(acquire.or(page.locator('.operator-menu'))).toBeVisible();
-  if (await acquire.isVisible()) await acquire.click();
+  await enterSystem(page);
   await expect(page.locator('.operator-menu')).toBeVisible();
   await expect(page.getByRole('region', { name: '待核對命令' })).toHaveCount(0);
   const nav = page.getByRole('navigation', { name: '主要導覽' });

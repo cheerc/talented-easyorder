@@ -1,4 +1,5 @@
 import { settings } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
 import { seedAccessLease } from './helpers/seed';
@@ -39,7 +40,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
 
   test('F3 reports blocked storage reads and clear failures without exporting or showing success', async ({ googleSession }) => {
     const { page } = googleSession;
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page);
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.evaluate(() => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
       schemaVersion: 1,
@@ -96,7 +97,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
       }));
     }, MARKERS);
 
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page, { reload: true });
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await expect(navButton).toBeVisible();
     await settings(page, '本機診斷');
@@ -151,7 +152,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
 
   test('removes a crafted diagnostic envelope when F3 reads it without a new error event', async ({ googleSession }) => {
     const { page } = googleSession;
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page);
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.evaluate(marker => {
       const occurredAt = new Date().toISOString();

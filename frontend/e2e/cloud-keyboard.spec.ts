@@ -1,4 +1,5 @@
 import { release } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 import { test, expect } from './fixtures';
 import { upsertDocument, PROJECT } from './helpers/seed';
 
@@ -29,7 +30,7 @@ test('101 keyboard payment produces one confirmed effect and returns to search',
     totals: { activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 },
     lastSettlementRevision: 0, lastCommandId: seedId, updatedAt: new Date(),
   });
-  await page.getByRole('button', { name: '開始使用' }).click();
+  await enterSystem(page, { reload: true });
   await page.getByRole('button', { name: '櫃台' }).click();
   await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
   await page.locator('body').click({ position: { x: 2, y: 500 } });
@@ -73,9 +74,7 @@ test('multiple candidates move only through visible options and reset on a new q
     });
     await upsertDocument('studentCodes', code, { studentId, lastCommandId: seedId, updatedAt: new Date() });
   }
-  const acquire = page.getByRole('button', { name: '開始使用' });
-  await expect(acquire.or(page.locator('.operator-strip'))).toBeVisible();
-  if (await acquire.isVisible()) await acquire.click();
+  await enterSystem(page, { reload: true });
   await page.getByRole('button', { name: '櫃台' }).click();
   const search = page.getByRole('combobox', { name: '搜尋編號、姓名或別名' });
   await search.fill('相似測試');

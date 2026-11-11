@@ -305,7 +305,7 @@ export interface PendingCommandScenario extends ScenarioHandle { commandId: stri
 
 /**
  * R2：待核對命令；`.cloud-pending-recovery` 顯示命令編號。journal 是瀏覽器 localStorage，
- * 必須在「開始使用」之前呼叫。從 `ui-closeout.spec.ts` 抽出。
+ * 必須在進入系統之前呼叫（簽入後自動進入；之後用 `enterSystem(page, { reload: true })` 重新開啟讀取）。從 `ui-closeout.spec.ts` 抽出。
  */
 export async function seedPendingCommand(page: Page, uid: string, commandId = PENDING_COMMAND_ID): Promise<PendingCommandScenario> {
   const head = await readRaw('system', 'dataHead');

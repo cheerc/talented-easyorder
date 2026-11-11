@@ -18,6 +18,8 @@ const appMocks = vi.hoisted(() => ({
     fb: { auth: {}, db: {} },
     access: { ok: true, profile: { uid: 'uid-a', email: 'a@example.test' } },
     lease: { epoch: 4 },
+    autoSignOutDue: false,
+    noteAutoSignOut: vi.fn(),
   },
 }));
 
@@ -106,6 +108,7 @@ vi.mock('../components/cloud/CloudAccountHistoryPage', () => ({
 import App from '../App';
 import { act } from '@testing-library/react';
 import { useUiTweaksStore } from '../store/uiTweaksStore';
+import { OperatorContext } from '../auth/OperatorContext';
 
 describe('App mode gate', () => {
   beforeEach(() => {
@@ -114,6 +117,7 @@ describe('App mode gate', () => {
     appMocks.firebase.storageCleanupError = null;
     appMocks.firebase.access = { ok: true, profile: { uid: 'uid-a', email: 'a@example.test' } };
     appMocks.firebase.lease = { epoch: 4 };
+    appMocks.firebase.autoSignOutDue = false;
     vi.clearAllMocks();
   });
 
@@ -205,6 +209,47 @@ describe('App mode gate', () => {
     expect(panel).not.toBeNull();
     expect(panel?.textContent).not.toMatch(/epoch/i);
     expect(panel?.textContent).not.toContain('租約');
+  });
+
+  describe('#691 P9: the fixed eight hours end in the normal sign-out', () => {
+    const operator = (signOut: () => void) => ({ name: '測試操作員', epoch: 4, signOut });
+    const renderApp = (signOut: () => void) => render(<OperatorContext.Provider value={operator(signOut)}><App /></OperatorContext.Provider>);
+
+    it('does nothing before it is due', () => {
+      appMocks.cloudModeValid = true;
+      const signOut = vi.fn();
+      renderApp(signOut);
+      expect(signOut).not.toHaveBeenCalled();
+      expect(appMocks.firebase.noteAutoSignOut).not.toHaveBeenCalled();
+    });
+
+    it('when due and nothing is pending, notes the reason and signs out once through the operator sign-out', () => {
+      appMocks.cloudModeValid = true;
+      appMocks.firebase.autoSignOutDue = true;
+      const signOut = vi.fn();
+      const view = renderApp(signOut);
+      expect(appMocks.firebase.noteAutoSignOut).toHaveBeenCalledTimes(1);
+      expect(signOut).toHaveBeenCalledTimes(1);
+
+      view.rerender(<OperatorContext.Provider value={operator(signOut)}><App /></OperatorContext.Provider>);
+      expect(signOut).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits while a command is unresolved (the page is locked) and signs out when it is resolved, never cutting it off', () => {
+      appMocks.cloudModeValid = true;
+      const signOut = vi.fn();
+      const view = renderApp(signOut);
+      fireEvent.click(screen.getByRole('button', { name: '保持待確認命令' }));
+
+      appMocks.firebase.autoSignOutDue = true;
+      view.rerender(<OperatorContext.Provider value={operator(signOut)}><App /></OperatorContext.Provider>);
+      expect(signOut).not.toHaveBeenCalled();
+      expect(appMocks.firebase.noteAutoSignOut).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(appMocks.firebase.noteAutoSignOut).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('操作員選單的登出鍵只叫「登出」，選單不出現使用權用語（#691 P8）', () => {

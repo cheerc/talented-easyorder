@@ -61,6 +61,11 @@ export type LeaseResult =
   | {
       status: 'lost';
       message: string;
+      /**
+       * True when the server could not be reached (or its answer could not be read back), so the result says nothing about who
+       * holds the lease. FirebaseProvider decides offline-versus-denied from this flag, never from the wording of `message`.
+       */
+      offline?: boolean;
     };
 
 export interface ActiveLeaseState {
@@ -151,8 +156,8 @@ async function readServerLease(db: Firestore): Promise<{ data: AccessLeaseDoc; u
   return readLeaseData(snapshot.data());
 }
 
-function lost(message: string): LeaseResult {
-  return { status: 'lost', message };
+function lost(message: string, offline = false): LeaseResult {
+  return offline ? { status: 'lost', message, offline: true } : { status: 'lost', message };
 }
 
 async function classifyAcquireFailure(
@@ -177,7 +182,7 @@ async function classifyAcquireFailure(
     }
     return lost('無法開始使用，請確認網路與帳號狀態後再試一次。');
   } catch {
-    return lost('目前無法連線確認登入狀態，請確認網路後再試。');
+    return lost('目前無法連線確認登入狀態，請確認網路後再試。', true);
   }
 }
 
@@ -188,14 +193,14 @@ async function confirmCommittedLease(
 ): Promise<LeaseResult> {
   try {
     const serverLease = await readServerLease(db);
-    if (!serverLease) return lost('無法從伺服器確認登入結果，請重新整理頁面確認。');
+    if (!serverLease) return lost('無法從伺服器確認登入結果，請重新整理頁面確認。', true);
     const { data, updatedAt } = serverLease;
     if (data.holderUid !== uid || data.epoch !== epoch) {
       return lost('登入狀態在確認前已改變（可能有其他人登入），請重新整理頁面。');
     }
     return { status: 'acquired', holderUid: uid, epoch, updatedAt };
   } catch {
-    return lost('登入已送出，但回讀失敗，暫不顯示資料。請重新整理頁面確認。');
+    return lost('登入已送出，但回讀失敗，暫不顯示資料。請重新整理頁面確認。', true);
   }
 }
 
@@ -310,7 +315,7 @@ export async function renewLease(
         return { status: 'stale_epoch' as const, expectedEpoch, actualEpoch: data.epoch };
       }
       if (data.holderUid !== uid) {
-        return { status: 'lost' as const, message: '其他人已登入，這個頁面已停止操作。請重新登入。' };
+        return { status: 'lost' as const, message: '其他人已登入或登入已失效，這個頁面已停止操作。請重新登入。' };
       }
 
       tx.update(leaseRef, {
@@ -331,7 +336,7 @@ export async function renewLease(
       }
       return lost('無法確認登入仍有效，這個頁面已停止操作。請重新登入。');
     } catch {
-      return lost('目前無法連線確認登入仍有效，這個頁面已停止操作。請確認網路後重新登入。');
+      return lost('目前無法連線確認登入仍有效，這個頁面已停止操作。請確認網路後重新登入。', true);
     }
   }
 }

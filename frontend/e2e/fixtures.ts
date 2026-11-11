@@ -82,10 +82,8 @@ export const test = base.extend<{ googleSession: GoogleSession; authedPage: Page
 
   authedPage: async ({ googleSession }, use) => {
     const page = googleSession.page;
-    const acquireButton = page.getByRole('button', { name: '開始使用' });
-    await acquireButton.waitFor({ state: 'visible', timeout: 15000 });
-    await acquireButton.click();
-    await page.waitForSelector('.operator-strip', { timeout: 15000 });
+    // #691 P9: the signed-in operator enters a vacant system by itself.
+    await page.waitForSelector('.operator-strip', { timeout: 20000 });
 
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);

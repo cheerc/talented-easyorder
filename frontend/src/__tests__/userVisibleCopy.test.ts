@@ -58,4 +58,15 @@ describe('#691 P8: user-visible copy', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('never states that another person certainly logged in where the cause can also be a lapsed login or the same account (#691 P9)', () => {
+    // LEASE_LOST also happens when the same account released from another tab or re-acquired its own expired lease.
+    const unhedged: string[] = [];
+    for (const [file, text] of Object.entries(sources)) {
+      stripComments(text).split('\n').forEach((line, index) => {
+        if (/其他人已登入，這個頁面已停止操作/.test(line)) unhedged.push(`${file.replace(/^\.\.\//, 'src/')}:${index + 1}`);
+      });
+    }
+    expect(unhedged).toEqual([]);
+  });
 });

@@ -390,3 +390,91 @@ describe('activeAccountLease: accessEvents are written inside the lease transiti
     expect(tx.set).not.toHaveBeenCalled();
   });
 });
+
+describe('activeAccountLease: copy of what a lost lease says (#691 P9 extras)', () => {
+  const timestamp = Object.assign(new Timestamp(1, 0), { toDate: () => new Date(1_700_000_000_000) });
+  const leaseDoc = (holderUid: string | null, epoch: number) => ({ holderUid, epoch, updatedAt: timestamp });
+
+  function runWith(lease: { holderUid: string | null; epoch: number; updatedAt: unknown }, committed: unknown = lease) {
+    const tx = { get: vi.fn(async () => ({ exists: () => true, data: () => lease })), update: vi.fn(), set: vi.fn() };
+    mocks.doc.mockImplementation(((_db: unknown, ...segments: string[]) => ({ path: segments.join('/') })) as never);
+    mocks.serverTimestamp.mockReturnValue('SERVER_TIME');
+    mocks.runTransaction.mockImplementation(async (_db: unknown, callback: (value: typeof tx) => Promise<unknown>) => callback(tx));
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => true, data: () => committed });
+    return tx;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getDocFromServer.mockReset();
+    mocks.runTransaction.mockReset();
+    mocks.serverTimestamp.mockReset();
+  });
+
+  it('renew by a holder that is no longer the holder says someone may have logged in or the login lapsed, never that someone certainly did', async () => {
+    // The same account releasing from another tab, or re-acquiring its own expired lease, reaches this branch too.
+    runWith(leaseDoc('operator-b', 5));
+    const result = await renewLease({} as Firestore, 'operator-a', 5);
+
+    expect(result).toMatchObject({ status: 'lost' });
+    expect(result.status === 'lost' ? result.message : '').toMatch(/其他人已登入或登入已失效/);
+    expect(result.status === 'lost' ? result.message : '').toMatch(/請重新登入/);
+  });
+});
+
+describe('activeAccountLease: a lost result says whether the server could not be reached (#691 P9 extras)', () => {
+  const timestamp = Object.assign(new Timestamp(1, 0), { toDate: () => new Date(1_700_000_000_000) });
+  const leaseDoc = (holderUid: string | null, epoch: number) => ({ holderUid, epoch, updatedAt: timestamp });
+  const fake = (lease: ReturnType<typeof leaseDoc>) => ({ get: vi.fn(async () => ({ exists: () => true, data: () => lease })), update: vi.fn(), set: vi.fn() });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getDocFromServer.mockReset();
+    mocks.runTransaction.mockReset();
+    mocks.serverTimestamp.mockReset();
+    mocks.doc.mockImplementation(((_db: unknown, ...segments: string[]) => ({ path: segments.join('/') })) as never);
+    mocks.serverTimestamp.mockReturnValue('SERVER_TIME');
+  });
+
+  /** The provider decides offline-versus-denied from this flag, so rewording a message can never flip the decision. */
+  const offlineOf = (result: { status: string; offline?: boolean }) => (result.status === 'lost' ? result.offline === true : null);
+
+  it('renew: the server cannot be read after Rules refused it → offline; the server can be read and shows it was refused → not offline', async () => {
+    mocks.runTransaction.mockRejectedValue(new Error('unavailable'));
+    mocks.getDocFromServer.mockRejectedValue(new Error('unavailable'));
+    expect(offlineOf(await renewLease({} as Firestore, 'operator-a', 3))).toBe(true);
+
+    mocks.getDocFromServer.mockReset();
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => true, data: () => leaseDoc('operator-a', 3) });
+    expect(offlineOf(await renewLease({} as Firestore, 'operator-a', 3))).toBe(false);
+  });
+
+  it('renew: the commit went through but the read-back failed or found nothing → offline; the read-back shows another holder → not offline', async () => {
+    mocks.runTransaction.mockImplementation(async (_db: unknown, callback: (value: ReturnType<typeof fake>) => Promise<unknown>) => callback(fake(leaseDoc('operator-a', 3))));
+    mocks.getDocFromServer.mockRejectedValue(new Error('unavailable'));
+    expect(offlineOf(await renewLease({} as Firestore, 'operator-a', 3))).toBe(true);
+
+    mocks.getDocFromServer.mockReset();
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => false, data: () => undefined });
+    expect(offlineOf(await renewLease({} as Firestore, 'operator-a', 3))).toBe(true);
+
+    mocks.getDocFromServer.mockReset();
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => true, data: () => leaseDoc('operator-b', 3) });
+    expect(offlineOf(await renewLease({} as Firestore, 'operator-a', 3))).toBe(false);
+  });
+
+  it('renew: a holder that changed or an unreadable lease document is a denial, not a connection problem', async () => {
+    mocks.runTransaction.mockImplementation(async (_db: unknown, callback: (value: ReturnType<typeof fake>) => Promise<unknown>) => callback(fake(leaseDoc('operator-b', 3))));
+    expect(offlineOf(await renewLease({} as Firestore, 'operator-a', 3))).toBe(false);
+  });
+
+  it('acquire: a failed attempt followed by an unreadable server → offline; a refused attempt that leaves another holder → not offline', async () => {
+    mocks.runTransaction.mockRejectedValue(new Error('unavailable'));
+    mocks.getDocFromServer.mockRejectedValue(new Error('unavailable'));
+    expect(offlineOf(await acquireLease({} as Firestore, 'operator-a', 3, 'a@example.test'))).toBe(true);
+
+    mocks.getDocFromServer.mockReset();
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => true, data: () => leaseDoc(null, 3) });
+    expect(offlineOf(await acquireLease({} as Firestore, 'operator-a', 3, 'a@example.test'))).toBe(false);
+  });
+});

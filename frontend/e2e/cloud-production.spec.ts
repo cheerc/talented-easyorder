@@ -1,4 +1,5 @@
 import { settings, report, release, releaseOwner, accountCheck } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 // P04 Cloud Authentication & Access Lease acceptance against Auth + Firestore Emulators.
 
 import { test, expect, E2E_BASE_URL, openGoogleSession, signInGoogle } from './fixtures';
@@ -125,17 +126,14 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
   });
 
-  test('A02: idle lease remains vacant until an approved Google operator explicitly acquires it', async ({ googleSession }) => {
+  test('A02: signing in as an approved Google operator enters a vacant system by itself, with no button, and records an acquire (#691 P9)', async ({ googleSession }) => {
     const { page, uid, providerIds } = googleSession;
     expect(providerIds).toContain('google.com');
-    await expect(page.getByRole('button', { name: '開始使用' })).toBeVisible();
-    await expect(page.locator('.operator-strip')).toHaveCount(0);
-    await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 0 });
-
-    await page.getByRole('button', { name: '開始使用' }).click();
-    await expect(page.locator('.operator-strip')).toBeVisible();
+    await enterSystem(page);
+    await expect(page.getByRole('button', { name: '開始使用' })).toHaveCount(0);
     await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
+    expect(await readAdminDocument('accessEvents', '1')).toMatchObject({ kind: 'acquire', actorUid: uid, previousHolderUid: null });
   });
 
   test('A03: B sees who is using the system, must confirm before taking over, A is shown who logged them out (#691)', async ({ browser }) => {
@@ -143,9 +141,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
 
     try {
-      const acquireA = operatorA.page.getByRole('button', { name: '開始使用' });
-      await expect(acquireA).toBeVisible();
-      await acquireA.click();
+      await enterSystem(operatorA.page);
       await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
@@ -198,7 +194,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
 
     try {
       const sessionA = await signInGoogle(pageA, E2E_IDENTITIES.operatorA.email);
-      await pageA.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(pageA);
       await expect(pageA.locator('.operator-strip')).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
       const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
@@ -214,12 +210,15 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
         if (!await menuA.evaluate(element => (element as HTMLDetailsElement).open)) await menuA.locator('summary').click();
         await menuA.getByRole('button', { name: '登出' }).click({ timeout: 2_000 });
       }).toPass({ timeout: 20_000 });
+      // #691 P9 r2: B saw the lease held (by A's tab of the same account) when it came up, so the vacancy A leaves behind is
+      // never entered automatically, by B or by A's own signed-out page: the lease stays vacant.
       await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
       await expect(pageB.locator('.operator-strip')).toHaveCount(0);
       await expect(pageB.locator('.auth-gate')).toBeVisible();
       await pageB.waitForTimeout(500);
       await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
       await expect(pageB.locator('.operator-strip')).toHaveCount(0);
+      await expect(pageA.locator('.operator-strip')).toHaveCount(0);
     } finally {
       await context.close();
     }
@@ -230,7 +229,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
 
     try {
-      await operatorA.page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(operatorA.page);
       await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
       expect(await readAccessLease()).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
@@ -258,7 +257,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
 
     try {
-      await operatorA.page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(operatorA.page);
       await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
       expect(await readAccessLease()).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
@@ -293,7 +292,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
   test('A06: deactivating the current operator masks the app while the server holder remains unchanged', async ({ browser }) => {
     const operator = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
-      await operator.page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(operator.page);
       await expect(operator.page.locator('.operator-strip')).toBeVisible();
       const heldLease = await readAccessLease();
       expect(heldLease).toMatchObject({ holderUid: operator.uid, epoch: 1 });
@@ -343,7 +342,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await pageB.clock.install({ time: initialClock });
 
       const sessionA = await signInGoogle(pageA, E2E_IDENTITIES.operatorA.email);
-      await pageA.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(pageA);
       await expect(pageA.locator('.operator-strip')).toBeVisible();
       await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
@@ -393,7 +392,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
 
   test('A09: an authenticated lease holder sees the P06 student surface without mounting POS controls', async ({ googleSession }) => {
     const { page, uid } = googleSession;
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page);
     await expect(page.locator('.operator-strip')).toBeVisible();
     await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
 
@@ -412,7 +411,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
   test('A10: no cloud tab exposes reset, sample-data, restore or simulation controls', async ({ googleSession }) => {
     test.setTimeout(90000);
     const { page } = googleSession;
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page);
     await expect(page.locator('.operator-strip')).toBeVisible();
 
     const forbidden = /重置系統數據|危險區域|載入範例資料|載入驗收範例|還原練習資料|還原快照|從空白開始|只清除練習交易|匯出快照|練習資料|練習營業日|模擬日期|模擬刷臉平板|模擬平板/;
@@ -442,7 +441,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
   test('A11: the report page shows no access handover section even though the acquire wrote its event', async ({ googleSession }) => {
     test.setTimeout(90000);
     const { page, uid, email } = googleSession;
-    await page.getByRole('button', { name: '開始使用' }).click();
+    await enterSystem(page);
     await expect(page.locator('.operator-strip')).toBeVisible();
     await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
     expect(await readAdminDocument('accessEvents', '1')).toMatchObject({ kind: 'acquire', actorEmail: email });
@@ -453,6 +452,28 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.locator('main').first()).not.toContainText(/使用權|租約|持有人/);
   });
 
+  // #691 P9: the fixed eight hours end in the normal sign-out; only the browser clock is moved, the Emulator's server time stays real.
+  test('A13: after eight hours the session ends in the normal sign-out: the lease is released and the login screen says why', async ({ browser }) => {
+    test.setTimeout(120000);
+    const context = await browser.newContext({ baseURL: E2E_BASE_URL });
+    const page = await context.newPage();
+    try {
+      await page.clock.install({ time: new Date() });
+      const session = await signInGoogle(page, E2E_IDENTITIES.operatorA.email);
+      await enterSystem(page);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: session.uid, epoch: 1 });
+
+      await page.clock.fastForward('08:01:00');
+      await expect(page.getByText('已超過 8 小時，系統已自動登出。')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+      await expect(page.locator('.operator-strip')).toHaveCount(0);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
+      expect(await readAdminDocument('accessEvents', '2')).toMatchObject({ kind: 'release', actorUid: session.uid });
+    } finally {
+      await context.close();
+    }
+  });
+
   test('A12: a confirmed holder tab returning from the background stays mounted, re-proves silently and re-acquires its own expired lease', async ({ browser }) => {
     test.setTimeout(120000);
     const context = await browser.newContext({ baseURL: E2E_BASE_URL });
@@ -461,7 +482,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       // Freeze only the browser clock. Firestore Emulator server time remains authoritative.
       await page.clock.install({ time: new Date() });
       const session = await signInGoogle(page, E2E_IDENTITIES.operatorA.email);
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: session.uid, epoch: 1 });
       const firstUpdate = (await readAccessLease()).updatedAt.getTime();
@@ -545,7 +566,7 @@ test.describe('P06 Cloud Students', () => {
 
     const first = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
-      await first.page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(first.page);
       await expect(first.page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(first.page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
       await expect(first.page.getByText('目前伺服器名單是空的，請手動新增學生。')).toBeVisible();
@@ -671,7 +692,7 @@ test.describe('P06 Cloud Students', () => {
 
       const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
       try {
-        await second.page.getByRole('button', { name: '開始使用' }).click();
+        await enterSystem(second.page);
         await expect(second.page.locator('.operator-strip')).toBeVisible();
         await expect(second.page.getByTestId('cloud-student-row-001')).toContainText('001');
         await expect(second.page.getByTestId('cloud-student-row-002')).toContainText('P06 已修改學生');
@@ -798,7 +819,7 @@ test.describe('P08 Cloud Orders', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 先至「日期與供應商」設定今日菜單
@@ -992,7 +1013,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 今日營業日存在且開帳現金確認為 1,000（前面的案例可能已建立營業日）
@@ -1113,7 +1134,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 今日營業日存在且開帳現金確認為 1,000
@@ -1211,7 +1232,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 今日營業日存在且開帳現金確認為 1,000
@@ -1346,7 +1367,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     try {
       const page = session.page;
       const today = taipeiToday();
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
       await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
 
@@ -1413,7 +1434,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
 
     const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
-      await second.page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(second.page);
       const row = second.page.getByTestId('cloud-student-row-009');
       await expect(row).toContainText('$70');
       await row.getByText('查看期初資料').click();
@@ -1431,7 +1452,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     const pageB = await context.newPage();
     try {
       const sessionA = await signInGoogle(pageA, E2E_IDENTITIES.operatorA.email);
-      await pageA.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(pageA);
       await expect(pageA.locator('.operator-strip')).toBeVisible();
 
       // The business day must be open with an opening cash (earlier cases may have done this already).
@@ -1526,7 +1547,7 @@ test.describe('P11 Cloud Day Close', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 今日營業日存在且已確認開帳現金（前面的案例可能已建立）
@@ -1606,7 +1627,7 @@ test.describe('P11 Cloud Day Close', () => {
 
     const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
-      await second.page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(second.page);
       await second.page.getByRole('button', { name: '今日帳', exact: true }).click();
       const main = second.page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
@@ -1668,7 +1689,7 @@ test.describe('P11c2b Cloud Backfill', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 異常頁：過去沒關帳的日子有「開始補登這一天」
@@ -1792,7 +1813,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
       expect(await readAdminDocument('days', gap)).toBeNull();
 
@@ -1923,7 +1944,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
     const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       const page = session.page;
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page);
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       await accountCheck(page);
