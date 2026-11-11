@@ -30,18 +30,16 @@ interface CloudDayRecord {
   totals: CloudDayTotalsRecord; lastSettlementRevision: number;
   lastCommandId: string; updatedAt: string;
 }
-type InheritanceBlock =
-  | 'vendor-missing' | 'vendor-inactive' | 'vendor-deleted' | 'vendor-renamed';
-interface CloudMenuSource {
-  sourceDayId: string; menu: CloudDayMenuRecord;
-  sourceVendor: CloudVendorRecord | null; blocked: InheritanceBlock | null;
+// #686: one day of the previous calendar week with a usable menu (vendor exists, not removed, active).
+// vendorName is the vendor's current name; the form fills the vendor by id and saves the current name.
+interface CloudLastWeekMenuItem {
+  dayId: string; itemName: string; price: number; vendorId: string; vendorName: string;
 }
 interface CloudDayVendorSnapshot {
   dayId: string;                         // requested target day
   selectionDate: string;                // Taipei date of server-stamped active lease.updatedAt
   day: CloudDayRecord | null;            // missing target is an empty-day candidate
   vendors: CloudVendorRecord[];           // nondeleted records; includes inactive for management
-  latestEarlierMenu: CloudMenuSource | null;
   seq: number; datasetId: string; goLiveDate: string;
 }
 interface CloudDayTotalsRecord {
@@ -57,6 +55,7 @@ interface CloudDayTotalsRecord {
 ```ts
 interface CloudDayVendorRepository {
   loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot>;
+  readLastWeekMenus(dayId: string, vendors: CloudVendorRecord[]): Promise<CloudLastWeekMenuItem[]>;
   ensureDay(input: EnsureDayInput): Promise<CommandResult>;
   saveVendor(input: SaveVendorInput): Promise<CommandResult>;
   removeVendor(input: RemoveVendorInput): Promise<CommandResult>;
@@ -72,9 +71,9 @@ function createCloudDayVendorRepository(
 
 `loadSnapshot(targetDayId)` uses the requested canonical YYYY-MM-DD or defaults to the trusted `selectionDate` from the server-read active lease. It returns that resolved `dayId` in the snapshot; UI must not choose a default using its own clock. Reads use server-only Firestore APIs. Strictly decode every physical vendor document, including tombstones, before filtering deleted records from `vendors`. Page the entire vendor collection, including tombstones, with cap 500 physical documents; probe beyond the cap to distinguish exactly 500 and exhausted from overflow. Overflow, malformed rows, query errors, or unstable head return explicit incomplete/stale errors, never a partial list.
 
-For latest-earlier lookup, page day documents in descending canonical document-ID order where `sourceDayId < targetDayId` and `sourceDayId <= selectionDate`; scan across null menus until the first non-null menu or confirmed exhaustion. Scan cap is 2,000 physical day documents; probe beyond the cap to distinguish exact exhaustion from overflow. A cap reached with more results, malformed rows, query errors, or unstable head is explicit INCOMPLETE_SNAPSHOT/STALE_SNAPSHOT, never “no earlier menu”. Read dataHead before and after all reads; require seq/datasetId/goLiveDate unchanged. If the newest source menu's vendor is missing, inactive, deleted, or renamed relative to `vendorNameSnapshot`, expose the corresponding blocked state and do not silently fall back to an older menu. Direct and inherited assignments both require current vendor active and not deleted. Existing menu/transaction snapshots never change.
+`loadSnapshot` reads only the target day document, the vendors and the lease/head fences. It does not scan earlier days (#686 removed the former latest-earlier lookup).
 
-Implementation note (2026-10-15, user-approved, same semantics): Firestore Emulator 1.19.8 and 1.22.0 both reject document-ID DESC queries (`descending key scans`). The repository therefore reads backward calendar-date windows of document IDs in ascending order and processes each window newest-first. Window width never exceeds the remaining scan cap, and a probe below each window confirms exhaustion. Processing order, the 2,000-document cap, overflow detection, and strict decoding of every processed row match a descending document-ID scan; rows older than the first non-null menu are not decoded.
+Last-week menus (#686, F3 「複製上週菜單」): `readLastWeekMenus(dayId, vendors)` runs only when the operator presses the button, never while a snapshot loads. "Last week" is the calendar week (Monday to Sunday) before the one `dayId` belongs to; the list covers its Monday to Friday. The week is computed on the canonical `YYYY-MM-DD` string (UTC calendar arithmetic on the string, no browser clock or time zone), so a Sunday belongs to the week that started on the Monday before it. One server query reads `days` with `documentId() >= Monday`, `documentId() <= Friday`, ascending `orderBy(documentId())` and `limit(5)` (`getDocsFromServer`; within Rules' `list` limit of 500 and `currentHolder`; a built-in single-field index serves it). Every returned row is strictly decoded; a malformed row is `UNSUPPORTED_SCHEMA`. Rows without a menu are skipped, and so are rows whose vendor is missing from `vendors`, removed, or not active. Each remaining day is listed separately (no merging of identical menus) with its date. There is no head-seq fence: the list is only a suggestion for the form, and the save goes through `SetDayMenu`, which Rules validate; a read error is shown and can be retried. Last week empty means an empty list ("上週沒有菜單"); it never looks further back. Other meals (`otherMealCount` rows) are not copied.
 
 ## Command input signatures and canonical fields
 
@@ -111,7 +110,7 @@ Canonical command identity fields:
 - All vendorId values use validId: 1..64 literal characters with no `/`; do not reserve the student-only `__cashier__` ID.
 - SaveVendor: targets `{vendorId}`, expectedRevisions `{vendor: 0}` for create or exact current revision for edit; payload exactly `{vendorId,name,phone,note,status}`. Create only active and never reuse a tombstone ID. Edit preserves createdAt, requires not deleted, increments revision. Empty phone/note are valid for clearing. Name 1..100 literal characters, phone 0..100, note 0..500.
 - RemoveVendor: targets `{vendorId}`, expectedRevisions `{vendor: exact current revision}`, payload exactly `{reason}` with reason 1..500 literal characters; stored receipt `reason` must equal that payload reason. Only inactive and not deleted may transition to deleted=true tombstone. Preserve identity/createdAt, increment revision, never physically delete or reuse ID.
-- SetDayMenu: targets `{dayId}`, expectedRevisions exactly `{day: exact current revision, headSeq: seq from the strict read snapshot}`, payload exactly `{selectionDate,itemName,price,vendorId,vendorNameSnapshot,inheritedFromDate}`. `selectionDate` is canonical YYYY-MM-DD from the active server lease timestamp. It participates in input fingerprint, stored receipt, and semantic replay. The selected vendor must currently be active and not deleted; its current name must equal `vendorNameSnapshot`. Item name 1..100 literal characters; price integer 1..1,000,000. Direct assignment has `inheritedFromDate:null`. Inheritance copies the immediate newest source menu's frozen business fields and source date; source date must be `< target dayId` and `<= selectionDate`. It must not be future relative to selectionDate. Source vendor must still be active, not deleted, and have unchanged name; otherwise block inheritance and require direct confirmation. Future target day menu preplanning is allowed. Target must be open/reopened, not closed. Menu revision null->1 or otherwise +1; updatedAt=request.time. Only menu plus day revision/lastCommandId/updatedAt changes; no totals/opening changes.
+- SetDayMenu: targets `{dayId}`, expectedRevisions exactly `{day: exact current revision, headSeq: seq from the strict read snapshot}`, payload exactly `{selectionDate,itemName,price,vendorId,vendorNameSnapshot,inheritedFromDate}`. `selectionDate` is canonical YYYY-MM-DD from the active server lease timestamp. It participates in input fingerprint, stored receipt, and semantic replay. The selected vendor must currently be active and not deleted; its current name must equal `vendorNameSnapshot`. Item name 1..100 literal characters; price integer 1..1,000,000. Direct assignment has `inheritedFromDate:null`; **the F3 UI only ever sends direct assignments** (#686: 「複製上週菜單」 fills the editable form, it does not inherit). The inheritance path below stays in the command schema, Rules, receipts and backup replay for old data. Inheritance copies the immediate newest source menu's frozen business fields and source date; source date must be `< target dayId` and `<= selectionDate`. It must not be future relative to selectionDate. Source vendor must still be active, not deleted, and have unchanged name; otherwise block inheritance and require direct confirmation. Future target day menu preplanning is allowed. Target must be open/reopened, not closed. Menu revision null->1 or otherwise +1; updatedAt=request.time. Only menu plus day revision/lastCommandId/updatedAt changes; no totals/opening changes.
 - SetOpeningCash: targets `{dayId}`, expectedRevisions exactly `{day: exact current revision}`, payload exactly `{openingCash}`. P07 only permits current Taipei date, with goLiveDate<=today, and day status not closed. Amount is an explicit safe integer 0..20,000; reject -0. Null means unconfirmed; explicit 0 is confirmed. First confirmation sets openedBy=request.auth.uid and openedAt=request.time. Later amount edits preserve the first actor/time. No clear-to-null operation in P07. No headSeq precondition is used by this command.
 
 ## Receipt, concurrency, and date rules
