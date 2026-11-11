@@ -54,6 +54,12 @@ const headMocks = vi.hoisted(() => ({
   }),
 }));
 vi.mock('../../firebase/dataHeadWatch', () => ({ subscribeDataHead: headMocks.subscribeDataHead }));
+// #691 P9: the real values are eight hours and 30 seconds (checked in useAutoSignOut.test.tsx); these tests run on real timers.
+vi.mock('../../auth/autoSignOut', async importOriginal => ({
+  ...await importOriginal<typeof import('../../auth/autoSignOut')>(),
+  AUTO_SIGN_OUT_MS: 600,
+  AUTO_SIGN_OUT_CHECK_MS: 20,
+}));
 vi.mock('../../store/clearSensitivePosData', () => ({ clearSensitivePosData: vi.fn().mockResolvedValue(undefined) }));
 
 import { FirebaseProvider, useDataHead, useFirebase } from '../FirebaseProvider';
@@ -944,5 +950,108 @@ describe('#691 P7 — a holder who is taken over sees who took the lease; takeov
     await act(async () => { await hook.result.current.acquireLease({ confirmedTakeoverEpoch: 1 }); });
     expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
     expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true });
+  });
+});
+
+describe('#691 P9 — fixed eight hours after login, local timer only takes access away', () => {
+  const services = {
+    app: {} as Record<string, unknown>,
+    auth: { currentUser: null } as Record<string, unknown>,
+    db: {} as Record<string, unknown>,
+  };
+  const FIXED_MS = 600;
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function signedInTab({ confirmed }: { confirmed: boolean }) {
+    mockEnsure.mockResolvedValue(services as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => { accessCallback = callback; return vi.fn(); });
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
+    leaseMocks.startLeaseHeartbeat.mockReturnValue(vi.fn());
+    leaseMocks.renewLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
+    const hook = renderHook(() => useFirebase(), { wrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => {
+      accessCallback!({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+    await act(async () => {
+      leaseCallback!({ holderUid: confirmed ? 'op-1' : 'op-2', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    if (confirmed) await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+    return { hook, startedAt: Date.now(), leaseCallback: () => leaseCallback!, accessCallback: () => accessCallback! };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsConfigured.mockReturnValue(true);
+    leaseMocks.readLeaseTakerEmail.mockReset().mockResolvedValue(null);
+    leaseMocks.acquireLease.mockReset();
+    leaseMocks.getLeaseStatus.mockReset();
+    leaseMocks.releaseLease.mockReset().mockResolvedValue(false);
+    leaseMocks.renewLease.mockReset();
+    leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('X1: a confirmed holder becomes due once the fixed time after it started has passed, not before', async () => {
+    const { hook, startedAt } = await signedInTab({ confirmed: true });
+    expect(hook.result.current.autoSignOutDue).toBe(false);
+    await sleep(FIXED_MS / 3);
+    expect(hook.result.current.autoSignOutDue).toBe(false);
+
+    await waitFor(() => expect(hook.result.current.autoSignOutDue).toBe(true), { timeout: 3000 });
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(FIXED_MS - 100);
+  });
+
+  it('X2: activity does not extend it: lease updates and re-confirmations leave the deadline where it was', async () => {
+    const { hook, startedAt, leaseCallback } = await signedInTab({ confirmed: true });
+    for (let step = 0; step < 4; step += 1) {
+      await sleep(FIXED_MS / 6);
+      await act(async () => {
+        leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+      });
+    }
+    await waitFor(() => expect(hook.result.current.autoSignOutDue).toBe(true), { timeout: 3000 });
+    expect(Date.now() - startedAt).toBeLessThan(FIXED_MS + 800);
+  });
+
+  it('X3: a clock that jumps (the computer slept) is noticed at the next check', async () => {
+    const { hook, startedAt } = await signedInTab({ confirmed: true });
+    vi.spyOn(Date, 'now').mockReturnValue(startedAt + 24 * 60 * 60 * 1000);
+    await waitFor(() => expect(hook.result.current.autoSignOutDue).toBe(true), { timeout: 1000 });
+  });
+
+  it('X4: only a confirmed holder counts: a tab that is not the holder never becomes due, and losing the lease stops the count', async () => {
+    const other = await signedInTab({ confirmed: false });
+    const holder = await signedInTab({ confirmed: true });
+    await sleep(FIXED_MS / 3);
+    await act(async () => {
+      holder.leaseCallback()({ holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(holder.hook.result.current.lease.isHolder).toBe(false));
+    await sleep(FIXED_MS + 300);
+    expect(other.hook.result.current.autoSignOutDue).toBe(false);
+    expect(holder.hook.result.current.autoSignOutDue).toBe(false);
+  });
+
+  it('X5: the reason survives the sign-out and is cleared by the next login', async () => {
+    const { hook, accessCallback } = await signedInTab({ confirmed: true });
+    expect(hook.result.current.autoSignedOut).toBe(false);
+
+    act(() => hook.result.current.noteAutoSignOut());
+    expect(hook.result.current.autoSignedOut).toBe(true);
+
+    await act(async () => { accessCallback()({ ok: false, reason: 'signed_out' }); });
+    expect(hook.result.current.autoSignedOut).toBe(true);
+    expect(hook.result.current.autoSignOutDue).toBe(false);
+
+    await act(async () => {
+      accessCallback()({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    expect(hook.result.current.autoSignedOut).toBe(false);
   });
 });

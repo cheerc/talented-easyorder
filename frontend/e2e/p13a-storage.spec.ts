@@ -1,4 +1,5 @@
 import { release } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test, expect, E2E_BASE_URL, signInGoogle } from './fixtures';
@@ -335,7 +336,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
         updatedAt: now,
       });
 
-      await pageA.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(pageA, { reload: true });
       await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await pageA.getByRole('button', { name: '櫃台' }).click();
@@ -373,7 +374,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       contextB = await browser.newContext({ baseURL: E2E_BASE_URL });
       const pageB = await contextB.newPage();
       await signInGoogle(pageB, E2E_IDENTITIES.operatorB.email);
-      await pageB.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(pageB, { reload: true });
       await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '3');
       await expect(pageB.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await pageB.getByRole('button', { name: '櫃台' }).click();

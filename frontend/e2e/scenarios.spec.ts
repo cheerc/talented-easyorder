@@ -23,9 +23,9 @@ import type { Page } from '@playwright/test';
 const VACANT_LEASE = { holderUid: null, epoch: 0 };
 const today = taipeiToday();
 
+// The scenarios seed their data after the sign-in, so the entered system is opened again to read it.
 async function acquire(page: Page) {
-  await page.getByRole('button', { name: '開始使用' }).click();
-  await expect(page.locator('.operator-strip')).toBeVisible();
+  await enterSystem(page, { reload: true });
 }
 
 function mainNav(page: Page, name: string) {
@@ -267,7 +267,7 @@ test.describe('具名業務情境 fixtures', () => {
     const scenario = await seedPendingCommand(page, uid);
     try {
       // 有待核對命令時不顯示操作者列，所以只點取得使用權，直接等待核對區塊。
-      await page.getByRole('button', { name: '開始使用' }).click();
+      await enterSystem(page, { reload: true });
       const pending = page.locator('.cloud-pending-recovery');
       await pending.getByText('技術資訊').click();
       await expect(pending.getByText(scenario.commandId)).toBeVisible();

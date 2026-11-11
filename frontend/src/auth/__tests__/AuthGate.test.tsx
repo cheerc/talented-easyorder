@@ -306,7 +306,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByText(/檢查過於頻繁/)).toBeTruthy();
   });
 
-  it('P04: 白名單通過且無人使用時，顯示開始使用按鈕，且畫面不出現工程用語', () => {
+  it('P04: 白名單通過、無人使用但沒有可用的取得服務時，顯示開始使用按鈕，且畫面不出現工程用語', () => {
     const access: OperatorAccess = {
       ok: true,
       profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
@@ -359,51 +359,145 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByTestId('business-content')).toBeTruthy();
   });
 
-  it('P04: idle lease does not auto-acquire; acquisition requires an explicit click', () => {
-    const acquire = vi.fn().mockResolvedValue({
-      status: 'acquired', holderUid: 'uid-me', epoch: 1, updatedAt: new Date(),
-    });
-    const access: OperatorAccess = {
-      ok: true,
-      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
-    };
-    const idleLease: ActiveLeaseState = {
-      holderUid: null, epoch: 0, updatedAt: null, isKnown: true,
-      isHolder: false, isExpired: true,
-    };
-
-    render(
-      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={idleLease} onAcquireLease={acquire}>
-        <div data-testid="business-content">業務機密資料</div>
-      </AuthGate>,
-    );
-
-    expect(acquire).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('business-content')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
-    expect(acquire).toHaveBeenCalledOnce();
+  const approved: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+  const vacantLease = (epoch = 0, isExpired = true): ActiveLeaseState => ({
+    holderUid: null, epoch, updatedAt: null, isKnown: true, isHolder: false, isExpired,
   });
 
-  it('P04: rejected acquire is caught and shown in the gate', async () => {
-    const acquire = vi.fn().mockRejectedValue(new Error('offline test failure'));
-    const access: OperatorAccess = {
-      ok: true,
-      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
-    };
-    const idleLease: ActiveLeaseState = {
-      holderUid: null, epoch: 0, updatedAt: null, isKnown: true,
-      isHolder: false, isExpired: true,
-    };
-
-    render(
-      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={idleLease} onAcquireLease={acquire}>
+  it('#691 P9: a vacant lease is entered automatically, once, with no button to press', async () => {
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 1, updatedAt: new Date() });
+    const view = render(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease()} onAcquireLease={acquire}>
         <div data-testid="business-content">業務機密資料</div>
       </AuthGate>,
     );
 
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
+    expect(acquire).toHaveBeenCalledWith();
+    expect(screen.getByRole('heading', { name: '正在連線…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '開始使用' })).toBeNull();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+
+    // Re-rendering the same observation never asks again.
+    view.rerender(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease()} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('#691 P9: an automatic start that fails shows the reason and offers an explicit button to try again', async () => {
+    const acquire = vi.fn()
+      .mockResolvedValueOnce({ status: 'busy', currentHolderUid: 'uid-other', epoch: 0, updatedAt: new Date() })
+      .mockResolvedValueOnce({ status: 'acquired', holderUid: 'uid-me', epoch: 1, updatedAt: new Date() });
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease()} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    expect(await screen.findByText('對方仍在使用中，請稍後再試。')).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toMatch(/使用權|租約|Epoch|世代/);
+    expect(screen.queryByTestId('business-content')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(2));
+  });
+
+  it('#691 P9: a rejected automatic start is caught and shown in the gate', async () => {
+    const acquire = vi.fn().mockRejectedValue(new Error('offline test failure'));
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease()} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
     expect(await screen.findByText('offline test failure')).toBeTruthy();
     expect(screen.queryByTestId('business-content')).toBeNull();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
+  });
+
+  it('#691 P9: a new vacancy (a later epoch) is entered again after the earlier attempt failed', async () => {
+    const acquire = vi.fn().mockResolvedValue({ status: 'lost', message: '目前無法連線，請稍後再試。' });
+    const view = render(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(0)} onAcquireLease={acquire}>
+        <span>x</span>
+      </AuthGate>,
+    );
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
+    await screen.findByRole('button', { name: '開始使用' });
+
+    view.rerender(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(2)} onAcquireLease={acquire}>
+        <span>x</span>
+      </AuthGate>,
+    );
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(2));
+  });
+
+  it.each([
+    ['another account holds a lease that looks expired on this computer', { holderUid: 'uid-other', epoch: 2, updatedAt: new Date(0), isKnown: true, isHolder: false, isExpired: true }],
+    ['another account holds a live lease', { holderUid: 'uid-other', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false }],
+    ['this account holds the lease in another tab', { holderUid: 'uid-me', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false }],
+    ['the lease state is not yet confirmed by the server', { holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false }],
+  ] as Array<[string, ActiveLeaseState]>)('#691 P9: never entered automatically when %s', async (_label, lease) => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 3, updatedAt: new Date() });
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={lease} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+  });
+
+  it('#691 P9: not entered before the account is approved, however empty the lease is', async () => {
+    const acquire = vi.fn();
+    for (const access of [
+      { ok: false, reason: 'checking' },
+      { ok: false, reason: 'signed_out' },
+      { ok: false, reason: 'not_whitelisted', profile: { uid: 'uid-new', email: 'new@example.com', displayName: '新人' } },
+      { ok: false, reason: 'inactive', profile: { uid: 'uid-old', email: 'old@example.com', displayName: '舊人' } },
+    ] as OperatorAccess[]) {
+      const view = render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={vacantLease()} onAcquireLease={acquire}><span>x</span></AuthGate>);
+      view.unmount();
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it('#691 P9: after being logged out by someone else the notice comes first; the vacancy is entered only after “我知道了”', async () => {
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 4, updatedAt: new Date() });
+    const view = render(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(3)} onAcquireLease={acquire}
+        kicked={{ takerEmail: 'other@example.com' }} onAcknowledgeKicked={vi.fn()}>
+        <span>x</span>
+      </AuthGate>,
+    );
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(screen.getByRole('alert')).toHaveTextContent('已被登出');
+    expect(acquire).not.toHaveBeenCalled();
+
+    view.rerender(
+      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(3)} onAcquireLease={acquire} kicked={null} onAcknowledgeKicked={vi.fn()}>
+        <span>x</span>
+      </AuthGate>,
+    );
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
+  });
+
+  it('#691 P9: the login screen says why when the fixed eight hours ended the session, and says nothing otherwise', () => {
+    const signedOut: OperatorAccess = { ok: false, reason: 'signed_out' };
+    const first = render(<AuthGate auth={mockAuth} db={mockDb} access={signedOut} autoSignedOut><span>x</span></AuthGate>);
+    expect(screen.getByRole('status')).toHaveTextContent('已超過 8 小時，系統已自動登出。');
+    expect(screen.getByRole('button', { name: '使用 Google 登入' })).toBeTruthy();
+    first.unmount();
+
+    render(<AuthGate auth={mockAuth} db={mockDb} access={signedOut}><span>x</span></AuthGate>);
+    expect(screen.queryByText(/已超過 8 小時/)).toBeNull();
   });
 
   it('P04: same UID observed in the lease stays masked until an explicit server recheck', async () => {
