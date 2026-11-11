@@ -163,7 +163,7 @@ describe('CloudDayCloseRepository.loadSnapshot', () => {
 
   it.each([
     ['system/dataHead', '營業資料狀態尚未由伺服器確認，請重新載入日結'],
-    ['system/accessLease', '使用權狀態尚未由伺服器確認，請重新載入日結'],
+    ['system/accessLease', '登入狀態尚未由伺服器確認，請重新載入日結'],
   ])('#684: %s read from the cache is reported in plain words without internal names', async (cachedPath, message) => {
     setup({ days: [[today, dayDoc()]], cachedDocs: [cachedPath] });
     await expect(subject().loadSnapshot()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT', message });

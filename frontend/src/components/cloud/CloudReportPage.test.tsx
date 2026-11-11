@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CloudAccessEventsSnapshot, CloudLedgerReport, CloudAuditRangeSnapshot } from '../../domain/cloudLedgerReport';
+import type { CloudLedgerReport, CloudAuditRangeSnapshot } from '../../domain/cloudLedgerReport';
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' as string | null }));
 const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null }));
@@ -82,7 +82,8 @@ const audit = {
     committedAt: '2026-10-19T04:00:00.000Z', reason: null, before: null, after: null,
     attributedDate: '2026-10-19', dateBasis: 'business-date' }],
 } as unknown as CloudAuditRangeSnapshot;
-const accessEvents: CloudAccessEventsSnapshot = {
+// #691 P8: the report no longer reads access events. The mock stays so that a read would be caught.
+const accessEvents: Record<string, unknown> = {
   datasetId: 'dataset-a', sourceSeq: 11, goLiveDate: '2026-10-01', leaseToday: '2026-10-19', leaseEpoch: 4,
   range, complete: true,
   rows: [
@@ -213,9 +214,8 @@ describe('CloudReportPage', () => {
     });
   });
 
-  it('uses EmptyState for an empty report, no matching accounts, and no access events', async () => {
+  it('uses EmptyState for an empty report and for no matching accounts', async () => {
     mocks.readReport.mockResolvedValue({ ...report, days: [], transactions: [], mergedTransactions: [] } as unknown as CloudLedgerReport);
-    mocks.readAccessEvents.mockResolvedValue({ ...accessEvents, rows: [] });
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:empty" />);
     await screen.findByTestId('report-ready');
 
@@ -223,8 +223,6 @@ describe('CloudReportPage', () => {
     expect(within(summary).getByText('此區間沒有營業日資料。').closest('.empty-title')).not.toBeNull();
     const details = screen.getByRole('region', { name: '完整交易明細' });
     expect(within(details).getByText('此範圍沒有帳戶交易。').closest('.empty-title')).not.toBeNull();
-    const handover = screen.getByRole('region', { name: '使用權交接' });
-    expect(within(handover).getByText('此區間沒有使用權交接紀錄。').closest('.empty-title')).not.toBeNull();
 
     fireEvent.change(screen.getByLabelText('搜尋帳戶'), { target: { value: '不存在' } });
     expect(screen.getByText('沒有符合的帳戶。未選取時輸出範圍仍是全部帳戶。').closest('.empty-title')).not.toBeNull();
@@ -766,77 +764,23 @@ describe('CloudReportPage', () => {
     });
   });
 
-  describe('access handover table (P13c2)', () => {
-    const handoverRegion = () => screen.getByRole('region', { name: '使用權交接' });
-
-    it('shows time, Chinese kind, operator email and the previous holder email when the report and the handover read agree', async () => {
-      let finishReport!: (value: CloudLedgerReport) => void;
-      mocks.readReport.mockReturnValueOnce(new Promise(resolve => { finishReport = resolve; }));
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover" />);
-
-      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
-      await act(async () => { finishReport(report); });
-      await screen.findByTestId('report-ready');
-
-      expect(mocks.readAccessEvents).toHaveBeenCalledWith({ range, leaseEpoch: 4 });
-      const rows = within(handoverRegion()).getAllByRole('row').slice(1).map(row =>
-        within(row).getAllByRole('cell').map(cell => cell.textContent));
-      expect(rows).toEqual([
-        [expect.stringContaining('09:00'), '取得使用權', 'first@example.test', '無'],
-        [expect.stringContaining('12:00'), '接手使用權', 'second@example.test', 'first@example.test'],
-        [expect.stringContaining('17:30'), '釋放使用權', 'second@example.test', '（無紀錄）'],
-      ]);
-      expect(handoverRegion().textContent).not.toMatch(/uid-|operator-a/);
-      expect(within(handoverRegion()).queryByRole('button', { name: /匯出|下載/ })).toBeNull();
-      expect(within(handoverRegion()).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['使用權交接說明']);
-    });
-
-    it('hides a table whose snapshot envelope differs from the report and says so, without blocking the report', async () => {
-      mocks.readAccessEvents.mockResolvedValueOnce({ ...accessEvents, sourceSeq: 12 });
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-envelope" />);
-      await screen.findByTestId('report-ready');
-
-      expect(handoverRegion()).toHaveTextContent('使用權交接紀錄與報表對不上，未顯示；請重新查詢。');
-      expect(handoverRegion().textContent).not.toMatch(ENGINEERING_TERMS);
-      expect(within(handoverRegion()).queryByRole('table')).toBeNull();
-      expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
-    });
-
-    it('reports an incomplete handover read without hiding the report or its exports', async () => {
-      mocks.readAccessEvents.mockRejectedValueOnce(Object.assign(new Error('資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢'), { code: 'INCOMPLETE_SNAPSHOT' }));
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-incomplete" />);
-      await screen.findByTestId('report-ready');
-
-      expect(handoverRegion()).toHaveTextContent('使用權交接無法完整讀取：資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢');
-      expect(within(handoverRegion()).queryByRole('table')).toBeNull();
-      expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
-    });
-
-    it('treats a lost lease while reading handovers like any other lost lease', async () => {
-      mocks.readAccessEvents.mockRejectedValueOnce(Object.assign(new Error('租約已被取代'), { code: 'LEASE_LOST' }));
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-lease" />);
-
-      expect(await screen.findByRole('alert')).toHaveTextContent('租約已被取代');
-      expect(screen.queryByTestId('report-ready')).toBeNull();
-      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
-    });
-
-    it('says plainly when the range has no handover and skips the table for a single-account scope', async () => {
-      mocks.readAccessEvents.mockImplementation(async input => ({
-        ...accessEvents, leaseEpoch: input.leaseEpoch, range: input.range, rows: [],
-      }));
+  describe('no access handover section (#691 P8)', () => {
+    it('shows no handover region or help button and never reads access events, for all accounts and for one account', async () => {
       mocks.readReport.mockImplementation(async input => ({ ...report, scope: { studentId: input.studentId } }));
       mocks.readAuditRange.mockImplementation(async input => ({ ...audit, scope: { studentId: input.studentId } }));
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-empty" />);
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:no-handover" />);
       await screen.findByTestId('report-ready');
-      expect(handoverRegion()).toHaveTextContent('此區間沒有使用權交接紀錄');
+
+      expect(screen.queryByRole('region', { name: /交接/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /交接/ })).toBeNull();
+      expect(document.body.textContent).not.toMatch(/使用權|租約|持有人|交接/);
+      expect(mocks.readAccessEvents).not.toHaveBeenCalled();
 
       fireEvent.change(screen.getByLabelText('搜尋帳戶'), { target: { value: '001' } });
       fireEvent.click(screen.getByRole('button', { name: '選取 林小明（001）' }));
       await waitFor(() => expect(mocks.readReport).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'student-a' })));
       await screen.findByText(/帳戶 student-a/);
-      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
-      expect(mocks.readAccessEvents).toHaveBeenCalledTimes(1);
+      expect(mocks.readAccessEvents).not.toHaveBeenCalled();
     });
   });
 
@@ -1278,7 +1222,7 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
 
     it('moves usage explanations into HelpTip buttons and does not leave them as page text', async () => {
       const page = await renderReady('operator-a:4:p5-help');
-      for (const name of ['報表說明', '區間日摘要說明', '交易明細說明', '輸出說明', '使用權交接說明']) {
+      for (const name of ['報表說明', '區間日摘要說明', '交易明細說明', '輸出說明']) {
         expect(within(page).getByRole('button', { name })).toBeInTheDocument();
       }
       expect(page.textContent).not.toContain('日期範圍由伺服器台北日期');

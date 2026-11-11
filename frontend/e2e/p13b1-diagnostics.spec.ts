@@ -39,7 +39,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
 
   test('F3 reports blocked storage reads and clear failures without exporting or showing success', async ({ googleSession }) => {
     const { page } = googleSession;
-    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await page.getByRole('button', { name: '開始使用' }).click();
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.evaluate(() => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
       schemaVersion: 1,
@@ -96,7 +96,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
       }));
     }, MARKERS);
 
-    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await page.getByRole('button', { name: '開始使用' }).click();
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await expect(navButton).toBeVisible();
     await settings(page, '本機診斷');
@@ -142,7 +142,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     })));
 
     await seedAccessLease({ holderUid: 'p13b1-other-holder', epoch: 2, updatedAt: new Date() });
-    await expect(page.getByLabel('EasyOrder 使用權租約')).toBeVisible();
+    await expect(page.getByLabel('EasyOrder 登入狀態')).toBeVisible();
     await expect(page.getByRole('button', { name: /本機診斷.*F3/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '匯出本機診斷' })).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'))).toContain('UNKNOWN_RESULT');
@@ -151,7 +151,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
 
   test('removes a crafted diagnostic envelope when F3 reads it without a new error event', async ({ googleSession }) => {
     const { page } = googleSession;
-    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await page.getByRole('button', { name: '開始使用' }).click();
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.evaluate(marker => {
       const occurredAt = new Date().toISOString();

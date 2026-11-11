@@ -39,7 +39,7 @@ describe('#684 cloud read repository: a cached or unconfirmed read names no inte
 
   it.each([
     ['system/dataHead', '營業資料狀態尚未由伺服器確認，無法作為完整報表；請重新載入'],
-    ['system/accessLease', '使用權狀態尚未由伺服器確認，無法作為完整報表；請重新載入'],
+    ['system/accessLease', '登入狀態尚未由伺服器確認，無法作為完整報表；請重新載入'],
   ])('%s read from the cache says what is unconfirmed in plain words', async (cachedPath, message) => {
     serverRead(cachedPath);
     await expect(subject().readSummary({ range, leaseEpoch: 7 }))

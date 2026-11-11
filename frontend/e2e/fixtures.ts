@@ -82,7 +82,7 @@ export const test = base.extend<{ googleSession: GoogleSession; authedPage: Page
 
   authedPage: async ({ googleSession }, use) => {
     const page = googleSession.page;
-    const acquireButton = page.getByRole('button', { name: '取得系統使用權' });
+    const acquireButton = page.getByRole('button', { name: '開始使用' });
     await acquireButton.waitFor({ state: 'visible', timeout: 15000 });
     await acquireButton.click();
     await page.waitForSelector('.operator-strip', { timeout: 15000 });
@@ -90,7 +90,7 @@ export const test = base.extend<{ googleSession: GoogleSession; authedPage: Page
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);
     if (!page.isClosed()) {
-      const releaseButton = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      const releaseButton = page.locator('.operator-strip button').filter({ hasText: '登出' });
       if (await releaseButton.count() && await releaseButton.isEnabled().catch(() => false)) {
         await releaseOwner(releaseButton);
         await waitForVacantLease();

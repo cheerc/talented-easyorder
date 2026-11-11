@@ -220,7 +220,7 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
     });
 
     await expect(pendingAcquire).resolves.toEqual({
-      status: 'lost', message: '帳號或租約狀態已變更，請重新確認',
+      status: 'lost', message: '帳號或登入狀態已變更，請重新確認',
     });
     expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
     expect(result.current.access).toEqual(nextAccess);
@@ -428,7 +428,7 @@ describe('#586 — tab return keeps a confirmed holder mounted', () => {
 
   it('V3: a background renew the server does not confirm masks and clears (fail closed)', async () => {
     const { hook, stopHeartbeat } = await confirmedHolder();
-    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '伺服器未確認續約；請重新檢查使用權' });
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '無法確認登入仍有效，這個頁面已停止操作。請重新登入。' });
     setVisibility('hidden');
     nowMs = 61_000;
     setVisibility('visible');
@@ -479,7 +479,7 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
     holderUid: 'op-1', epoch, updatedAt: new Date(0), isKnown: true, isHolder: false, isExpired: true,
   });
   const unknownState = {
-    holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false, error: '無法從伺服器讀取租約',
+    holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false, error: '無法從伺服器讀取登入狀態',
   };
 
   function setVisibility(state: 'visible' | 'hidden') {
@@ -529,7 +529,7 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
 
   /** Background return after a minute whose renew Rules refuse (the lease expired while the tab slept). */
   function returnAfterLongAbsence() {
-    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '伺服器未確認續約；請重新檢查使用權' });
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '無法確認登入仍有效，這個頁面已停止操作。請重新登入。' });
     setVisibility('hidden');
     nowMs = 61_000;
     setVisibility('visible');
@@ -599,7 +599,7 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
     const { hook } = await confirmedHolder();
     leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(2));
     // The follow-up proof for the new epoch is refused too, so the tab stays masked.
-    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '伺服器未確認續約；請重新檢查使用權' });
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '無法確認登入仍有效，這個頁面已停止操作。請重新登入。' });
     returnAfterLongAbsence();
     await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
 
@@ -611,7 +611,7 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
     const { hook } = await confirmedHolder();
     leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(1));
     leaseMocks.acquireLease.mockResolvedValueOnce({
-      status: 'busy', currentHolderUid: 'op-1', epoch: 1, updatedAt: new Date(), message: '使用權仍有效',
+      status: 'busy', currentHolderUid: 'op-1', epoch: 1, updatedAt: new Date(), message: '對方仍在使用',
     });
     returnAfterLongAbsence();
     await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
@@ -634,7 +634,7 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
     const { hook, history, heartbeatLost } = await confirmedHolder();
     leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(1));
     leaseMocks.acquireLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() });
-    await act(async () => { heartbeatLost('租約續約失敗：伺服器未確認續約；請重新檢查使用權'); });
+    await act(async () => { heartbeatLost('租約續約失敗：無法確認登入仍有效，這個頁面已停止操作。請重新登入。'); });
     await waitFor(() => expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true }));
 
     expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
@@ -645,7 +645,7 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
 
   it('W7b: heartbeat loss with another holder or an unreadable server masks and clears', async () => {
     const { hook, heartbeatLost } = await confirmedHolder();
-    await act(async () => { heartbeatLost('租約續約失敗：伺服器未確認續約；請重新檢查使用權'); });
+    await act(async () => { heartbeatLost('租約續約失敗：無法確認登入仍有效，這個頁面已停止操作。請重新登入。'); });
     await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
 
     expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
