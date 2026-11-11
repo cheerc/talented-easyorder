@@ -1038,6 +1038,43 @@ describe('#691 P9 — fixed eight hours after login, local timer only takes acce
     expect(holder.hook.result.current.autoSignOutDue).toBe(false);
   });
 
+  it('X6 (r3): a same-account blip in the middle (a token refresh masks and re-confirms) does not restart the fixed time', async () => {
+    const { hook, startedAt, accessCallback, leaseCallback } = await signedInTab({ confirmed: true });
+    await sleep(FIXED_MS / 4);
+    await act(async () => { accessCallback()({ ok: false, reason: 'checking' }); });
+    await sleep(FIXED_MS / 6);
+    await act(async () => {
+      accessCallback()({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    await waitFor(() => expect(leaseCallback).toBeDefined());
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+
+    await waitFor(() => expect(hook.result.current.autoSignOutDue).toBe(true), { timeout: 3000 });
+    expect(Date.now() - startedAt).toBeLessThan(FIXED_MS + 100);
+  });
+
+  it('X7 (r3): a real loss of the lease (someone else in) restarts the count from the next time it is held', async () => {
+    const { hook, startedAt, leaseCallback } = await signedInTab({ confirmed: true });
+    await sleep(FIXED_MS / 4);
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+    await sleep(FIXED_MS / 4);
+    const regainedAt = Date.now();
+    leaseMocks.getLeaseStatus.mockResolvedValue({ holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    leaseMocks.acquireLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 3, updatedAt: new Date() });
+    await act(async () => { await hook.result.current.acquireLease({ confirmedTakeoverEpoch: 2 }); });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+
+    await waitFor(() => expect(hook.result.current.autoSignOutDue).toBe(true), { timeout: 3000 });
+    expect(Date.now() - regainedAt).toBeGreaterThanOrEqual(FIXED_MS - 100);
+    expect(Date.now() - startedAt).toBeGreaterThan(FIXED_MS + 100);
+  });
+
   it('X5: the reason survives the sign-out and is cleared by the next login', async () => {
     const { hook, accessCallback } = await signedInTab({ confirmed: true });
     expect(hook.result.current.autoSignedOut).toBe(false);

@@ -482,6 +482,20 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
   });
 
+  it('#691 P9 r3: a transient “checking” (a token refresh) between two observations is not a new sign-in', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 4, updatedAt: new Date() });
+    const unknownLease: ActiveLeaseState = { holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false };
+    const view = render(gate(busyLease(3), acquire));
+    view.rerender(gate(vacantLease(4), acquire));
+    view.rerender(<AuthGate auth={mockAuth} db={mockDb} access={{ ok: false, reason: 'checking' }} lease={unknownLease} onAcquireLease={acquire}><span>x</span></AuthGate>);
+    view.rerender(gate(vacantLease(4), acquire));
+    view.rerender(gate(vacantLease(6), acquire));
+    await new Promise(resolve => setTimeout(resolve, 60));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
+  });
+
   it('#691 P9 r2: signing out and signing in again earns one new automatic entry', async () => {
     const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 1, updatedAt: new Date() });
     const view = render(gate(vacantLease(0), acquire));
