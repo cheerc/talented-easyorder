@@ -1,6 +1,7 @@
 // #648/#650/#652：真 App + demo-easyorder Emulator；只使用合成資料，不提交截圖。
 import { test, expect } from './fixtures';
 import { accountCheck, settings } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 import { seedAccessLease } from './helpers/seed';
 import { JOURNAL_NAMESPACE, clearLeftoverBusinessState, seedAdjacentCashGap, seedBackfillInProgress, seedOpenDayWithMenu, seedPendingCommand, seedUnopenedPastDay, type ScenarioHandle } from './helpers/scenarios';
 import type { Locator, Page } from '@playwright/test';
