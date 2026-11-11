@@ -4,10 +4,15 @@ import { AuthGate } from '../AuthGate';
 import type { OperatorAccess } from '../../firebase/authService';
 import type { ActiveLeaseState } from '../../firebase/activeAccountLease';
 import { signInWithGoogle } from '../../firebase/authService';
+import { readLeaseTakerEmail } from '../../firebase/activeAccountLease';
 
 vi.mock('../../firebase/authService', () => ({
   signInWithGoogle: vi.fn(),
   signOutOperator: vi.fn(),
+}));
+vi.mock('../../firebase/activeAccountLease', async importOriginal => ({
+  ...await importOriginal<typeof import('../../firebase/activeAccountLease')>(),
+  readLeaseTakerEmail: vi.fn(),
 }));
 
 describe('AuthGate: 授權閘門與白名單畫面', () => {
@@ -144,7 +149,8 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
 
-  it('P04: 白名單通過但租約被他人占用時，顯示目前有人使用中且不渲染業務內容', () => {
+  it('P04: 白名單通過但租約被他人占用時，顯示目前有人使用中且不渲染業務內容', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
     const access: OperatorAccess = {
       ok: true,
       profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
@@ -165,47 +171,137 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     );
 
     expect(screen.getByText('目前有人使用中')).toBeTruthy();
-    expect(screen.getByText('uid-other-operator')).toBeTruthy();
+    expect(await screen.findByText(/other@example\.com/)).toBeTruthy();
+    expect(readLeaseTakerEmail).toHaveBeenCalledWith(mockDb, 2, 'uid-other-operator');
+    // #691: no raw UID, no epoch, no engineering wording on the busy screen.
+    const gate = screen.getByRole('main');
+    expect(gate.textContent).not.toContain('uid-other-operator');
+    expect(gate.textContent).not.toMatch(/Epoch|世代|租約|持有/);
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
 
-  it('P04: 15 秒重新檢查限流防護', async () => {
+  it('#691 P7: busy screen offers no silent recheck; the primary button opens a confirmation naming the occupant, and cancel never acquires', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 3, updatedAt: new Date() });
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const occupiedLease: ActiveLeaseState = {
+      holderUid: 'uid-other-operator', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    };
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupiedLease} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+    await screen.findByText(/other@example\.com/);
+    expect(screen.queryByRole('button', { name: '重新檢查' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    expect(acquire).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('other@example.com 正在使用。繼續登入會讓對方立即登出，對方尚未送出的操作不會保存。');
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    fireEvent.click(screen.getByRole('button', { name: '是，讓對方登出並繼續' }));
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
+    // The confirmation names the lease the user was shown, so a lease that changed meanwhile is not taken over blindly.
+    expect(acquire).toHaveBeenCalledWith({ confirmedTakeoverEpoch: 2 });
+  });
+
+  it('#691 P7: when the occupant email cannot be read the screen and dialog say 其他人 and still show no UID', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue(null);
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const occupiedLease: ActiveLeaseState = {
+      holderUid: 'uid-other-operator', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    };
+    render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupiedLease}><span>x</span></AuthGate>);
+    expect(await screen.findByText(/目前由其他人使用中/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('其他人 正在使用。');
+    expect(screen.getByRole('main').textContent).not.toContain('uid-other-operator');
+  });
+
+  it('#691 P7: a taken-over tab shows who is in and “我知道了” returns to the busy screen', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acknowledge = vi.fn();
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const occupiedLease: ActiveLeaseState = {
+      holderUid: 'uid-other-operator', epoch: 3, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    };
+    const view = render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupiedLease}
+        kicked={{ takerEmail: 'other@example.com' }} onAcknowledgeKicked={acknowledge}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('other@example.com 已登入，您已被登出。');
+    expect(screen.queryByTestId('business-content')).toBeNull();
+    expect(screen.getByRole('main').textContent).not.toMatch(/uid-other-operator|Epoch|租約/);
+    fireEvent.click(screen.getByRole('button', { name: '我知道了' }));
+    expect(acknowledge).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupiedLease} kicked={null} onAcknowledgeKicked={acknowledge}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+    expect(screen.getByText('目前有人使用中')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '登入並讓對方登出' })).toBeTruthy();
+  });
+
+  it('#691 P7: a kicked notice without a readable email says 其他人', () => {
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const occupiedLease: ActiveLeaseState = {
+      holderUid: 'uid-other-operator', epoch: 3, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    };
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupiedLease} kicked={{ takerEmail: null }} onAcknowledgeKicked={vi.fn()}>
+        <span>x</span>
+      </AuthGate>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('其他人已登入，您已被登出。');
+  });
+
+  it('P04: 15 秒重新確認限流防護（同帳號待確認畫面）', async () => {
     const access: OperatorAccess = {
       ok: true,
       profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
     };
-    const occupiedLease: ActiveLeaseState = {
-      holderUid: 'uid-other-operator',
+    const observedLease: ActiveLeaseState = {
+      holderUid: 'uid-me',
       epoch: 2,
       updatedAt: new Date(),
       isKnown: true,
       isHolder: false,
       isExpired: false,
     };
-    const mockAcquire = vi.fn().mockResolvedValue({ status: 'busy', currentHolderUid: 'uid-other-operator' });
+    const mockAcquire = vi.fn().mockResolvedValue({ status: 'lost', message: '伺服器未確認' });
 
     render(
       <AuthGate
         auth={mockAuth}
         db={mockDb}
         access={access}
-        lease={occupiedLease}
+        lease={observedLease}
         onAcquireLease={mockAcquire}
       >
         <div data-testid="business-content">業務機密資料</div>
       </AuthGate>,
     );
 
-    const recheckBtn = screen.getByText('重新檢查');
     // 第一次點擊：可執行
-    fireEvent.click(recheckBtn);
+    fireEvent.click(screen.getByText('重新確認使用權'));
     expect(mockAcquire).toHaveBeenCalledTimes(1);
 
     // 等候第一次非同步檢查完成，按鈕恢復非 disabled
-    await waitFor(() => expect(screen.getByText('重新檢查')).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByText('重新確認使用權')).not.toBeDisabled());
 
     // 15 秒內再次點擊：觸發限流
-    fireEvent.click(screen.getByText('重新檢查'));
+    fireEvent.click(screen.getByText('重新確認使用權'));
     expect(mockAcquire).toHaveBeenCalledTimes(1); // 未再增加呼叫
     expect(screen.getByText(/檢查過於頻繁/)).toBeTruthy();
   });
