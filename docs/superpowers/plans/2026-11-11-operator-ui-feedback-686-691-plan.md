@@ -17,7 +17,7 @@
 | #689 | 日結頁：當日數字置頂、單一「補登」入口併入關帳區、補登原因改小字；使用者可見的「回填」全面改為「補登」（用語閘門見 §4）；spec 加一行畫面用語↔程式名稱對照 |
 | #691 | 確認後強制接手（Rules 狀態機變更，獨立高風險 PR）；被登出畫面顯示接手者；全站移除「使用權／租約／Epoch／伺服器使用權日期」等用語；移除報表「使用權交接」區；「釋放使用權並登出」→「登出」 |
 
-**不做**：F5 報表／查帳的範圍日期控制項（#690 決定 4，留後續）；舊 PC POS prototype（`components/pos`、`components/screens`、`components/report`）；command kind、資料欄位、collection 改名（#689 Ruling）；CSV 與機器可讀輸出的數值格式（#687 Ruling）；閒置自動登出（#691 決定 5）。
+**不做**：F5 報表／查帳的範圍日期控制項（#690 決定 4，留後續）；舊 PC POS prototype（`components/pos`、`components/screens`、`components/report`）；command kind、資料欄位、collection 改名（#689 Ruling）；CSV 與機器可讀輸出的數值格式（#687 Ruling）；登出前倒數警告（P9 Ruling）。#691 決定 5「不用閒置登出」已由擁有者修訂為「8 小時自動登出」，見 P9。
 
 ## 2. 分期與依賴
 
@@ -33,8 +33,9 @@
 | P6 「回填」→「補登」用語 | #689 | 雲端頁面、repository 錯誤訊息、contract／spec 用語對照 | P1、P4、P5，**加上擁有者確認 §4 用語表** | P7 |
 | P7 確認後強制接手（Rules＋確認對話＋被登出提示） | #691 | `firestore.rules`、`activeAccountLease.ts`、`FirebaseProvider.tsx`、`AuthGate.tsx`、lease／Rules Emulator 測試、spec §4.2、`docs/ops/p05-rules-budget.md` | — | P1–P6 |
 | P8 單一操作員白話化 | #691 | `AuthGate.tsx`、`App.tsx`、`errorCatalog.ts`、各頁與 repository 使用權文案、`CloudReportPage.tsx`、`cloudReadRepository.ts` | P6、P7 | — |
+| P9 無人使用時自動進入＋8 小時自動登出 | #691 | `AuthGate.tsx`、`FirebaseProvider.tsx`、`activeAccountLease.ts`（若需要）、spec §4.2 | P8 | — |
 
-依賴圖：`P1 → P2 → {P3 → P5, P4} → P6 → P8`；`P7` 自 base 起獨立進行，P8 需等 P7 merge。
+依賴圖：`P1 → P2 → {P3 → P5, P4} → P6 → P8 → P9`；`P7` 自 base 起獨立進行，P8 需等 P7 merge。
 
 Ruling：P1 放第一位。理由：它只改 `CloudOrdersPage` 的結帳明細與餘額字串，範圍最小；P2 改同檔的標題列，先後 merge 可避免兩邊同時改 `CloudOrdersPage.css`。
 Ruling：P3 與 P4 只能在 P2 merge 後才開始。P3／P4 各自只改日結頁、菜單頁的不同區塊，可並行。
@@ -357,6 +358,48 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
 - 錯誤訊息屬於安全提示（例如失去使用權後要清除資料），改文案時不得改變判斷與清除行為；只改字串，行為測試保持 GREEN。
 - `errorCatalog` 的訊息可能被 #684 的白話測試釘住，需要一起更新。
 
+### P9 無人使用時自動進入＋8 小時自動登出（#691 追加決定，2026-11-11）
+
+擁有者追加決定（直接告知 Planner）：
+- 沒有人使用時直接自動進入系統，不顯示「開始使用」按鈕。這取代 §5 原本的預設。
+- 已登入的帳號需要自動登出（例：8 小時），以免永遠不登出，導致下一個人每次都要把人踢掉。這修訂了 #691 決定 5「不用閒置登出」。8 小時從何時起算，見 §5 待確認。
+
+**現況**
+- spec §4.2 `:69`：「A 仍使用時 B …不自動搶占」；`AuthGate.tsx:233` 註解與測試「P04: idle lease does not auto-acquire; acquisition requires an explicit click」（`AuthGate.test.tsx`）固定了「閒置也要手動點擊」。
+- 關閉瀏覽器或斷電時，不靠 unload 釋放，最多 5 分鐘逾期（spec `:71`）。分頁一直開著時，心跳會無限續約（`activeAccountLease.ts:27`）。
+
+**範圍**
+- 自動進入：租約為 `null`，或伺服器確認已逾期時（`isKnown && isExpired` 或 `holderUid == null`），登入後自動呼叫一次 acquire，不顯示按鈕。結果為 `busy`（同時有人搶先）時，進入 P7 的「有人使用中」畫面。仍在使用中的租約**不會**自動接手（P7 的確認對話不變）。修訂 spec `:69`：「閒置或逾期時自動取得；有效持有中時需明確確認才接手」。
+- 自動登出：持有分頁登入滿 8 小時後（起算點依 §5 決定），走正常登出流程：先確認送出中的結果，再釋放租約，最後 signOut。若此時 `navigationLocked`（送出中或錯誤待處理，`App.tsx:312`），延到解除後再執行，不中斷送出中的命令。登出後的登入畫面顯示一行「已超過 8 小時，系統已自動登出。」
+- Ruling：8 小時計時只用來讓本機主動登出（只減少權限、不授予），不違反 `frontend/CLAUDE.md`「不用本機倒數授權」與 `REVIEW.md` 🔴 #5。Rules 不改；5 分鐘租約與心跳不變。
+- Ruling：先不做登出前的倒數警告，只在登入畫面說明原因（減法原則）。擁有者若要提前提醒，再另外加。
+- 時長以單一常數定義（例如 `AUTO_SIGN_OUT_MS = 8 * 60 * 60 * 1000`），不做設定畫面。
+- 跨分頁：同 UID 多分頁時，以開始計時那一頁的時間為準。任一頁登出後，其他頁照既有規則回到登入遮罩（spec `:72`）。起算時間存在哪裡（記憶體或 sessionStorage），由實作者依「重新整理後是否重算」的決定選擇並說明。
+
+**驗收**（以 fake timers 測量；Emulator 驗證 acquire 實際寫入）
+- 無人持有時登入 → 不點任何按鈕即進入，事件 kind 為 `acquire`。
+- 持有者租約已逾期時登入 → 自動進入，事件 kind 為 `takeover`。
+- 有效持有中時登入 → 顯示「目前由 ○○ 使用中」與確認按鈕，不自動接手。
+- 登入滿 8 小時、沒有送出中命令 → 租約釋放（epoch +1、`release` 事件），回到登入畫面並顯示原因。
+- 滿 8 小時時正在送出命令 → 等送出完成並確認後才登出。
+
+**測試**：
+- `AuthGate.test.tsx`：改寫「idle lease does not auto-acquire」，新增上述案例。
+- `FirebaseProvider.test.tsx`：計時、`navigationLocked` 延後。
+- `activeAccountLease.spec.ts`：自動 acquire 的 Rules 路徑沿用既有 acquire 案例；確認 release 的事件案例仍為 GREEN。
+- E2E `e2e/cloud-production.spec.ts` 中以「取得系統使用權」按鈕登入的 helper（`e2e/helpers`、`e2e/fixtures.ts`，以 `grep -rn "取得系統使用權\|開始使用" e2e` 列出）改為自動進入。
+
+```bash
+npx vitest run src/auth/__tests__/AuthGate.test.tsx src/providers/__tests__/FirebaseProvider.test.tsx
+EASYORDER_REQUIRE_ACTIVE_ACCOUNT_LEASE_PROOF=true npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/activeAccountLease.spec.ts"
+npm run test:e2e   # 登入 helper 影響所有分組，需跑全部 Playwright 設定
+```
+
+**風險**：
+- 登入 helper 變更會影響全部 E2E 分組。
+- 自動 acquire 必須在白名單驗證完成後才執行，不能在 `access.ok` 確定前觸發。
+- 自動進入不得繞過 P7 的確認流程，有效持有中只能走確認對話。
+
 ## 4. 用語對照表（P6 閘門，需擁有者確認）
 
 | 概念（程式名稱） | 現行畫面用語 | 提議畫面用語 | 備註 |
@@ -379,7 +422,8 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
 |---|---|---|---|
 | §4 用語對照表 | P6 | 擁有者 | 依提議欄 |
 | 被接手提示顯示 email（姓名需另改 Rules） | P7 文案 | 擁有者經 Coordinator | email |
-| P8 閒置／逾期畫面是否改為自動接續（不顯示「開始使用」按鈕） | P8 | Coordinator | 保留一顆按鈕（spec「不自動搶占」） |
+| ~~P8 閒置／逾期畫面是否自動進入~~ | — | 擁有者已決定（2026-11-11）：自動進入，移入 P9 | — |
+| P9 8 小時從何時起算：登入後固定 8 小時，或最後一次操作後 8 小時 | P9 | 擁有者 | 登入後固定 8 小時 |
 
 已解決的調查：Rules 條件、kind、被接手方偵測方式（即時 listener）、送出中命令處理、備份／還原影響（無）、報表 decoder 影響（無，沿用 `takeover`）。依據見 P7「現況」。
 
