@@ -32,7 +32,7 @@ const INDEX_CSS = resolve(process.cwd(), 'src/index.css');
 // 硬寫 px 字級檢查清單（#648 P1）：新 ui 元件 CSS 與 token／等比放大 CSS。
 // 每個雲端頁在改版 Phase 完成時，必須把自己的頁面 CSS 加進 FONT_SIZE_CHECKED_CLOUD_CSS；
 // P8 結束時所有雲端頁 CSS 都要在清單內（見 docs/FRONTEND-UI-STYLE.md）。
-const FONT_SIZE_CHECKED_UI_CSS = ['HelpTip.css', 'Callout.css', 'ActionCard.css', 'StatTile.css'];
+const FONT_SIZE_CHECKED_UI_CSS = ['HelpTip.css', 'Callout.css', 'ActionCard.css', 'StatTile.css', 'DateField.css'];
 const FONT_SIZE_CHECKED_CLOUD_CSS: string[] = ['CloudBackupPage.css', 'CloudOrdersPage.css', 'CloudReportPage.css', 'CloudDayClosePage.css', 'CloudDayVendorsPage.css', 'CloudDayVendorForms.css', 'CloudDiagnosticsPage.css', 'CloudStudentsPage.css', 'CloudAccountHistoryPage.css', 'CloudLedgerAnomaliesPage.css', 'CloudPendingRecoveryBoundary.css', 'LedgerUnclosedBanner.css', 'DataUpdatedNotice.css'];
 const FONT_SIZE_CHECKED_STYLES_CSS = ['data-table.css'];
 
@@ -295,5 +295,27 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
   it('欠款字樣用警示色（#687：取代各頁自己的 badge 與 inline 寫法）', () => {
     const css = readFileSync(resolve(CLOUD_DIR, '../ui/StatusBadge.css'), 'utf8');
     expect(ruleBody(css, '.cloud-account-balance__debt')).toMatch(/color:\s*var\(--warn\)/);
+  });
+});
+
+describe('#690 共用 DateField 外觀', () => {
+  const dateFieldCss = () => readFileSync(resolve(UI_DIR, 'DateField.css'), 'utf8');
+
+  it('控制項取 F2 日結的外觀：等寬字、--t-lg、最小高度 3rem', () => {
+    const control = ruleBody(dateFieldCss(), '.date-field-ui__control');
+    expect(control).toMatch(/font-family:\s*var\(--font-mono\)/);
+    expect(control).toMatch(/font-size:\s*var\(--t-lg\)/);
+    expect(control).toMatch(/min-height:\s*3rem/);
+  });
+
+  it('只有一個 compact 尺寸變體，同樣用 token（不另做第二個元件）', () => {
+    expect(dateFieldCss()).toMatch(/\.date-field-ui--compact\s+\.date-field-ui__control\s*\{[^}]*font-size:\s*var\(--t-md\)/);
+  });
+
+  it('頁面 CSS 不再保留各頁自己的日期列樣式', () => {
+    expect(readCss('CloudOrdersPage.css')).not.toContain('.cloud-orders__day-switch');
+    expect(readCss('CloudDayClosePage.css')).not.toContain('.cloud-day-close__datebar');
+    expect(readCss('CloudDayVendorsPage.css')).not.toContain('.cloud-day-vendors__date-form');
+    expect(readCss('CloudDayVendorsPage.css')).not.toContain('.cloud-day-vendors__date-meta');
   });
 });

@@ -163,7 +163,7 @@ describe('CloudDayVendorsPage', () => {
 
     expect(await screen.findByRole('heading', { name: `${future} 營業日` })).toBeInTheDocument();
     expect(repository.loadSnapshot).toHaveBeenCalledWith(undefined);
-    expect(screen.getByLabelText('查看或設定日期')).toHaveValue(future);
+    expect(screen.getByLabelText('營業日')).toHaveValue(future);
     expect(screen.queryByRole('form', { name: `${future} 開帳現金` })).not.toBeInTheDocument();
     expect(screen.getByText(/此日期可預排菜單，但不能預先開帳/)).toBeInTheDocument();
   });
@@ -175,8 +175,8 @@ describe('CloudDayVendorsPage', () => {
     }));
     renderPage();
 
-    const daySection = await screen.findByRole('region', { name: '指定營業日' });
-    expect(within(daySection).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+    const dateSection = await screen.findByRole('region', { name: '營業日選擇' });
+    expect(within(dateSection).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
     const vendorSection = screen.getByRole('region', { name: '供應商管理' });
     const activeRow = screen.getByTestId('cloud-vendor-row-active-vendor');
     const inactiveRow = screen.getByTestId('cloud-vendor-row-inactive-vendor');
@@ -891,7 +891,7 @@ describe('CloudDayVendorsPage', () => {
   });
 
   describe('改日期即載入（#651）', () => {
-    const dateField = () => screen.getByLabelText('查看或設定日期');
+    const dateField = () => screen.getByLabelText('營業日');
     const nextDay = '2026-10-16';
 
     it('loads the server snapshot as soon as a complete valid date is chosen, without a load button', async () => {
@@ -1000,6 +1000,7 @@ describe('CloudDayVendorsPage', () => {
 
       expect(container.querySelector('details')).toBeNull();
       expect(screen.queryByText(/使用權日期來自伺服器租約時間/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/伺服器使用權日期|系統啟用日/)).not.toBeInTheDocument();
       expect(screen.queryByText(/tombstone/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/資料序號/)).not.toBeInTheDocument();
       expect(screen.queryByText(/逐筆伺服器命令/)).not.toBeInTheDocument();
@@ -1009,8 +1010,8 @@ describe('CloudDayVendorsPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: '營業日說明' }));
       const dayTip = screen.getByRole('tooltip');
-      expect(dayTip).toHaveTextContent('營業日來自伺服器租約時間');
-      expect(dayTip.textContent).not.toMatch(/資料序號|除錯用/);
+      expect(dayTip).toHaveTextContent('改日期後會直接載入該日資料；有尚未送出的內容時會先詢問。');
+      expect(dayTip.textContent).not.toMatch(/資料序號|除錯用|伺服器|租約|使用權/);
       fireEvent.click(screen.getByRole('button', { name: '營業日說明' }));
 
       fireEvent.click(screen.getByRole('button', { name: '供應商說明' }));
@@ -1021,12 +1022,40 @@ describe('CloudDayVendorsPage', () => {
       expect(tip.textContent).not.toMatch(/tombstone/i);
     });
 
-    it('keeps the midnight sentence visible and out of the HelpTip', async () => {
+    it('no longer shows the server-lease date, go-live date or the midnight callout beside the date (#690, #691)', async () => {
       renderPage();
       await screen.findByRole('heading', { name: `${today} 營業日` });
-      const note = screen.getByText(/若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。/);
-      expect(note.closest('.callout-ui')).not.toBeNull();
-      expect(note.textContent).not.toMatch(/瀏覽器時鐘/);
+      expect(screen.queryByText(/若跨過臺北午夜/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/系統啟用日/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/伺服器使用權日期/)).not.toBeInTheDocument();
+    });
+
+    it('uses the shared DateField labelled 營業日 with the day state and today/past/future in its status slot', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      const field = screen.getByLabelText('營業日');
+      expect(field.closest('.date-field-ui')).not.toBeNull();
+      expect(screen.queryByLabelText('查看或設定日期')).not.toBeInTheDocument();
+      const status = field.closest('.date-field-ui')!.querySelector('.date-field-ui__status') as HTMLElement;
+      expect(status).toHaveTextContent('今天');
+      expect(within(status).getByText('開啟中')).toHaveClass('badge-ui');
+    });
+
+    it('shows 尚未建立 in the status slot while the server has no document for the day', async () => {
+      repository.loadSnapshot.mockResolvedValue(snapshot({ day: null }));
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      const status = screen.getByLabelText('營業日').closest('.date-field-ui')!.querySelector('.date-field-ui__status') as HTMLElement;
+      expect(within(status).getByText('尚未建立')).toHaveClass('badge-ui', 'badge-neutral');
+    });
+
+    it('labels a future day in the status slot', async () => {
+      repository.loadSnapshot.mockResolvedValue(snapshot({
+        dayId: future, selectionDate: today, day: { ...snapshot().day!, dayId: future },
+      }));
+      renderPage();
+      await screen.findByRole('heading', { name: `${future} 營業日` });
+      expect(screen.getByLabelText('營業日').closest('.date-field-ui')!.querySelector('.date-field-ui__status')).toHaveTextContent('未來日期');
     });
 
     it('shows blocked-action reasons as Callout', async () => {
