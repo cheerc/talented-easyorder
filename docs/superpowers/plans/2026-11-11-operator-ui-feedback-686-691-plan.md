@@ -1,6 +1,6 @@
 # Operator UI 回饋 #686–#691 執行計畫
 
-- 狀態：待 Coordinator Gate 1（尚未實作）
+- 狀態：Gate 1 通過（rev3，尚未實作）
 - Base：`origin/main` @ `9678540`
 - 來源 issue 與擁有者決定（有拘束力）：#686（comment 6791269595）、#687（6791287154，含 Coordinator Ruling）、#688（6791269898）、#689（6791270160，含 Ruling）、#690（6791270410）、#691（6791033870）
 - 適用指引：根目錄 `CLAUDE.md`、`frontend/CLAUDE.md`、`REVIEW.md`、`docs/FRONTEND-UI-STYLE.md`
@@ -30,7 +30,7 @@
 | P3 日結橫幅 n−1 與狀態文字 | #688 | `CloudDayClosePage.*`、`domain/cloudDayState.ts`（新）、day-close contract | P2 | P4、P7 |
 | P4 複製上週菜單 | #686 | `cloudDayVendorRepository.ts`、`CloudDayVendorsPage.*`、`CloudDayVendorForms.*`、day-vendors contract、backend spec | P2 | P3、P7 |
 | P5 日結補登區版面 | #689 | `CloudDayClosePage.*` | P3 | P4、P7 |
-| P6 「回填」→「補登」用語 | #689 | 雲端頁面、repository 錯誤訊息、contract／spec 用語對照 | P1、P4、P5，**加上擁有者確認 §4 用語表** | P7 |
+| P6 「回填」→「補登」用語 | #689 | 雲端頁面、repository 錯誤訊息、contract／spec 用語對照 | P1、P4、P5 | P7 |
 | P7 確認後強制接手（Rules＋確認對話＋被登出提示） | #691 | `firestore.rules`、`activeAccountLease.ts`、`FirebaseProvider.tsx`、`AuthGate.tsx`、lease／Rules Emulator 測試、spec §4.2、`docs/ops/p05-rules-budget.md` | — | P1–P6 |
 | P8 單一操作員白話化 | #691 | `AuthGate.tsx`、`App.tsx`、`errorCatalog.ts`、各頁與 repository 使用權文案、`CloudReportPage.tsx`、`cloudReadRepository.ts` | P6、P7 | — |
 | P9 無人使用時自動進入＋8 小時自動登出 | #691 | `AuthGate.tsx`、`FirebaseProvider.tsx`、`activeAccountLease.ts`（若需要）、spec §4.2 | P8 | — |
@@ -210,7 +210,7 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
 
 ### P6 使用者可見「回填」→「補登」（#689 決定 1、2）
 
-**閘門**：開工前需擁有者確認 §4 用語表。不影響其他 phase。
+**閘門**：已解除。擁有者接受 §4 提議欄（#689 comment 6791518001）。
 
 **範圍**
 - 使用者可見文字中，「回填」一律依 §4 改名，包括：
@@ -261,7 +261,7 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
   2. 被接手分頁未確認的命令編號留在 pending journal（`cloudPendingJournal.ts`，以 uid 為鍵，不依 epoch）。同一使用者重新登入後，`confirmPendingBatch`（`cloudCommandRepository.ts:703-757`）會在新 epoch 下比對 actor uid 查證。
   3. 寬限期要在 Rules 增加時間窗狀態，違反減法原則。擁有者已接受對方直接斷線（#691 決定 1）。
   「先同步再斷線」在雲端模式下沒有可同步的本機資料，PR 說明中要寫明這點。
-- Ruling：「是誰」以接手者 email 顯示（`accessEvents/{目前 epoch}.actorEmail`，有效白名單者本來就能讀），不新增 Rules 讀取權限。理由：顯示名稱放在只能讀本人的 `operators/{uid}`，要開放就得改 Rules 與 schema。spec §4.2 `:79` 寫「可讀不含個資的 lease 占用狀態」，需同步修訂為「占用者 email 可由有效白名單者讀取並顯示於接手提示」（事件 email 已可被讀，屬文件與現況對齊）。**請 Coordinator 確認擁有者接受顯示 email 而非姓名**；若不接受，需另開 Rules 讀取變更，不在本計畫。
+- Ruling：「是誰」以接手者 email 顯示（`accessEvents/{目前 epoch}.actorEmail`，有效白名單者本來就能讀），不新增 Rules 讀取權限。理由：顯示名稱放在只能讀本人的 `operators/{uid}`，要開放就得改 Rules 與 schema。spec §4.2 `:79` 寫「可讀不含個資的 lease 占用狀態」，需同步修訂為「占用者 email 可由有效白名單者讀取並顯示於接手提示」（事件 email 已可被讀，屬文件與現況對齊）。擁有者已接受顯示 email（#691 comment 6791518265）。
 - Ruling：確認對話與被接手提示放在本 PR，不延到 P8。理由：Rules 放寬與「重新檢查」會靜默接手的 client 必須同時上線，否則部署後到 P8 之間，按一下就會在未經確認下把人踢掉。
 
 **範圍**
@@ -392,8 +392,15 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
 ```bash
 npx vitest run src/auth/__tests__/AuthGate.test.tsx src/providers/__tests__/FirebaseProvider.test.tsx
 EASYORDER_REQUIRE_ACTIVE_ACCOUNT_LEASE_PROOF=true npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/activeAccountLease.spec.ts"
-npm run test:e2e   # 登入 helper 影響所有分組，需跑全部 Playwright 設定
+npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.config.ts"          # auth、cloud-production、cloud-shell、cloud-day-vendors、scenarios、ui-closeout
+npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.keyboard.config.ts"
+npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.p12c.config.ts"
+npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.p13a.config.ts"
+npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.p13b1.config.ts"
+npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.p13b2.config.ts"
 ```
+
+Ruling（Coordinator，Gate 1）：本機不跑完整 `npm run test:e2e`，完整套件由 CI 執行。上列是使用共用登入 fixture（`e2e/fixtures.ts`、`e2e/helpers/scenarios.ts`）或「取得系統使用權」按鈕的設定。prototype、p13a-dev、p13a-no-config 三個設定不經雲端登入 helper，交給 CI。PR 必須寫明本機實際執行了哪些設定，其餘由 CI 涵蓋。
 
 **風險**：
 - 登入 helper 變更會影響全部 E2E 分組。
@@ -414,14 +421,14 @@ npm run test:e2e   # 登入 helper 影響所有分組，需跑全部 Playwright 
 | 補開帳（`BackfillOpeningCash`） | 補開帳 | 補開帳（不變） | 與「補登」並存；意思是補上那天的開帳現金 |
 | 關帳後補記（`RecordPostCloseEntry`） | 關帳後補記 | 關帳後補記（不變） | 已關帳日的現金差額紀錄，與補登不同 |
 
-撞詞風險：「補登交易」與「補登中（狀態）」共用「補登」，屬同一流程，可接受；「補開帳」「補記」字面不同，不改。若擁有者要區分「補登中」與交易標籤「補登」，備選為狀態「待補登」。
+擁有者已接受本表（#689 comment 6791518001），不採備選用語「待補登」。
 
 ## 5. 待確認事項（不擋其他 phase）
 
 | 項目 | 擋住 | 誰決定 | 預設 |
 |---|---|---|---|
-| §4 用語對照表 | P6 | 擁有者 | 依提議欄 |
-| 被接手提示顯示 email（姓名需另改 Rules） | P7 文案 | 擁有者經 Coordinator | email |
+| ~~§4 用語對照表~~ | — | 已解決：擁有者接受提議欄，不採「待補登」（#689 comment 6791518001）；P6 閘門解除 | — |
+| ~~被接手提示顯示 email~~ | — | 已解決：顯示 email（#691 comment 6791518265） | — |
 | ~~P8 閒置／逾期畫面是否自動進入~~ | — | 擁有者已決定（2026-11-11）：自動進入，移入 P9 | — |
 | P9 8 小時從何時起算：登入後固定 8 小時，或最後一次操作後 8 小時 | P9 | 擁有者 | 登入後固定 8 小時 |
 
