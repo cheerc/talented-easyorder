@@ -390,3 +390,34 @@ describe('activeAccountLease: accessEvents are written inside the lease transiti
     expect(tx.set).not.toHaveBeenCalled();
   });
 });
+
+describe('activeAccountLease: copy of what a lost lease says (#691 P9 extras)', () => {
+  const timestamp = Object.assign(new Timestamp(1, 0), { toDate: () => new Date(1_700_000_000_000) });
+  const leaseDoc = (holderUid: string | null, epoch: number) => ({ holderUid, epoch, updatedAt: timestamp });
+
+  function runWith(lease: { holderUid: string | null; epoch: number; updatedAt: unknown }, committed: unknown = lease) {
+    const tx = { get: vi.fn(async () => ({ exists: () => true, data: () => lease })), update: vi.fn(), set: vi.fn() };
+    mocks.doc.mockImplementation(((_db: unknown, ...segments: string[]) => ({ path: segments.join('/') })) as never);
+    mocks.serverTimestamp.mockReturnValue('SERVER_TIME');
+    mocks.runTransaction.mockImplementation(async (_db: unknown, callback: (value: typeof tx) => Promise<unknown>) => callback(tx));
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => true, data: () => committed });
+    return tx;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getDocFromServer.mockReset();
+    mocks.runTransaction.mockReset();
+    mocks.serverTimestamp.mockReset();
+  });
+
+  it('renew by a holder that is no longer the holder says someone may have logged in or the login lapsed, never that someone certainly did', async () => {
+    // The same account releasing from another tab, or re-acquiring its own expired lease, reaches this branch too.
+    runWith(leaseDoc('operator-b', 5));
+    const result = await renewLease({} as Firestore, 'operator-a', 5);
+
+    expect(result).toMatchObject({ status: 'lost' });
+    expect(result.status === 'lost' ? result.message : '').toMatch(/其他人已登入或登入已失效/);
+    expect(result.status === 'lost' ? result.message : '').toMatch(/請重新登入/);
+  });
+});
