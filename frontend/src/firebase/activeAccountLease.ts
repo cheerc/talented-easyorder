@@ -310,7 +310,7 @@ export async function renewLease(
         return { status: 'stale_epoch' as const, expectedEpoch, actualEpoch: data.epoch };
       }
       if (data.holderUid !== uid) {
-        return { status: 'lost' as const, message: '其他人已登入，這個頁面已停止操作。請重新登入。' };
+        return { status: 'lost' as const, message: '其他人已登入或登入已失效，這個頁面已停止操作。請重新登入。' };
       }
 
       tx.update(leaseRef, {

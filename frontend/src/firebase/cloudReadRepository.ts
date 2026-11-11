@@ -258,7 +258,7 @@ function validateRange(range: CloudLedgerDateRange): CloudLedgerDateRange {
 
 function validateSnapshotScope(context: ReadContext, expectedLeaseEpoch: number): void {
   if (context.leaseEpoch !== expectedLeaseEpoch) {
-    throw new CloudReadRepositoryError('LEASE_LOST', '其他人已登入，這個頁面已停止操作。請重新登入後再讀取報表。');
+    throw new CloudReadRepositoryError('LEASE_LOST', '其他人已登入或登入已失效，這個頁面已停止操作。請重新登入後再讀取報表。');
   }
 }
 

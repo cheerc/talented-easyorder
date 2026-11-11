@@ -381,7 +381,7 @@ function checkOperator(raw: unknown, user: CurrentUser): void {
 function checkLease(raw: unknown, input: CanonicalEnabledInput, user: CurrentUser): void {
   const lease = decodeLease(raw);
   if (lease.holderUid !== user.uid || lease.epoch !== input.leaseEpoch) {
-    throw new RejectCommand('LEASE_LOST', '其他人已登入，這個頁面已停止操作。請重新登入。');
+    throw new RejectCommand('LEASE_LOST', '其他人已登入或登入已失效，這個頁面已停止操作。請重新登入。');
   }
   // Expiration authority remains the Firestore Rules request.time comparison.
 }
@@ -695,7 +695,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const lease = decodeLease(leaseSnapshot.data());
     checkOperator(operatorSnapshot.data(), user);
     if (lease.holderUid !== user.uid || lease.epoch !== expectedEpoch) {
-      throw new RejectCommand('LEASE_LOST', '其他人已登入，這個頁面已停止操作。請重新登入。');
+      throw new RejectCommand('LEASE_LOST', '其他人已登入或登入已失效，這個頁面已停止操作。請重新登入。');
     }
     return { uid: user.uid, datasetId: String(head.datasetId), leaseEpoch: Number(lease.epoch), maintenance: head.maintenance === true };
   }
