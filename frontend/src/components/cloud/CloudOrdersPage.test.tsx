@@ -1403,6 +1403,23 @@ describe('CloudOrdersPage', () => {
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
+  it('shows the balance after a refund with the shared balance format, thousands included (#687 nit)', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: [mockStudent('s1', '001', '王小明', 1500), mockStudent('s2', '002', '李小華', 50)],
+      transactions: [],
+    }));
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.keyDown(window, { key: 'w' });
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    const card = await screen.findByTestId('refund-card');
+    fireEvent.change(screen.getByLabelText(/退款金額/), { target: { value: '200' } });
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '學期結束' } });
+    expect(card).toHaveTextContent('退款後餘額：$1,300');
+    fireEvent.click(screen.getByTestId('submit-refund-button'));
+    expect(await screen.findByTestId('refund-confirm-modal')).toHaveTextContent('退款後餘額 $1,300');
+  });
+
   it('P09b: refunds from the W panel after confirmation, defaulting to the full balance', async () => {
     renderComponent();
     await selectStudent('001');
