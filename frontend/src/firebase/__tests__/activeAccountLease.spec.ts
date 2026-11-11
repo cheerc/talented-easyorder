@@ -745,7 +745,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       expect(await readLeaseTakerEmail(stranger as unknown as Firestore, 4, operatorB.uid)).toBeNull();
     });
 
-    it('T02: after the takeover the old holder is rejected on renew, release, lease overwrite and a stale-epoch command', async () => {
+    it('T02: after the takeover the old holder is rejected on renew, release, lease overwrite and business reads', async () => {
       await seedInitialLease(operatorA.uid, 3, new Date());
       const dbA = authedDb(operatorA.uid, operatorA.email);
       const dbB = authedDb(operatorB.uid, operatorB.email);
@@ -760,12 +760,10 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
         holderUid: null, epoch: 5, updatedAt: serverTimestamp(),
       }));
 
-      // Business read/command paths all require holderUid == caller; the old holder is no longer it.
+      // Business reads require holderUid == caller; the old holder is no longer it. (A full-shape command with the old
+      // epoch is proven in cloudRulesProof.spec.ts, "P7 #691 takeover" case.)
       await assertFails(getDoc(doc(dbA, 'students/stu-1')));
       await assertFails(getDocs(query(collection(dbA, 'commands'), limit(1))));
-      await assertFails(setDoc(doc(dbA, 'commands/cmd-stale-epoch'), {
-        commandId: 'cmd-stale-epoch', leaseEpoch: 3, kind: 'CreateOrder',
-      }));
 
       const lease = await getDoc(doc(dbB, 'system/accessLease'));
       expect(lease.data()?.holderUid).toBe(operatorB.uid);
