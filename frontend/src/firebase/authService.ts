@@ -137,10 +137,19 @@ export function subscribeOperatorAccess(
   const { onIdTokenChanged } = getAuthMod();
   const { doc, onSnapshot } = getFirestoreMod();
   let unsubscribeOperator: (() => void) | null = null;
+  let subscribedUid: string | null = null;
   let generation = 0;
 
   const unsubscribeAuth = onIdTokenChanged(auth, async user => {
+    // #691 P9 r3: Firebase also fires this hourly when it only renews the ID token. For the account that is already being
+    // watched that is not a new sign-in: it neither masks the page ("checking") nor restarts the operator subscription, which
+    // keeps delivering the allowlist state (a revocation still denies). A token that no longer qualifies (unverified e-mail,
+    // other provider) takes the normal path below.
+    if (user && subscribedUid === user.uid && unsubscribeOperator !== null && user.emailVerified === true && isGoogleUser(user)) {
+      return;
+    }
     const currentGeneration = ++generation;
+    subscribedUid = null;
     unsubscribeOperator?.();
     unsubscribeOperator = null;
     onAccess({ ok: false, reason: 'checking' });
@@ -162,6 +171,7 @@ export function subscribeOperatorAccess(
       return;
     }
 
+    subscribedUid = profile.uid;
     unsubscribeOperator = onSnapshot(
       doc(db, operatorPath(profile.uid)),
       snapshot => {

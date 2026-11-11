@@ -86,8 +86,12 @@ export function AuthGate({
   // tab, an unconfirmed lease, an unapproved account and a pending "you were signed out" notice never start it.
   const signInUid = access.ok ? access.profile.uid : null;
   const [auto, setAuto] = useState<{ uid: string; phase: 'trying' | 'entered' | 'settled' | 'failed'; message: string; epoch: number } | null>(null);
+  // The latch ends only with a real sign-out or a different account; a transient "checking" or a deny that the allowlist later
+  // lifts is the same sign-in.
+  const endsSignIn = access.ok ? false
+    : access.reason === 'signed_out' || ('profile' in access && access.profile !== undefined && auto !== null && access.profile.uid !== auto.uid);
   if (signInUid === null) {
-    if (auto !== null) setAuto(null);
+    if (auto !== null && endsSignIn) setAuto(null);
   } else if ((auto === null || auto.uid !== signInUid) && activeLease?.isKnown) {
     const firstIsVacant = activeLease.holderUid === null && !activeLease.isHolder && kicked === null && !!doAcquire;
     setAuto({ uid: signInUid, phase: firstIsVacant ? 'trying' : 'settled', message: '', epoch: 0 });
@@ -114,12 +118,13 @@ export function AuthGate({
     setAuto(current => (current !== null && current.uid === uid ? next : current));
   });
   const autoTryingUid = auto?.phase === 'trying' ? auto.uid : null;
+  const autoLatched = auto !== null;
   useEffect(() => {
-    if (signInUid === null) { autoStartedFor.current = null; return; }
+    if (!autoLatched) { autoStartedFor.current = null; return; }
     if (autoTryingUid === null || autoStartedFor.current === autoTryingUid) return;
     autoStartedFor.current = autoTryingUid;
     void runAutoEnter(autoTryingUid);
-  }, [signInUid, autoTryingUid]);
+  }, [autoLatched, autoTryingUid]);
   // While the attempt runs, and until the screen has caught up with the lease it just took (an older vacant observation is
   // still showing), the gate says it is connecting instead of flashing the button. A vacancy newer than that is a later release.
   const autoChecking = activeLease?.isKnown === true && activeLease.holderUid === null && !activeLease.isHolder

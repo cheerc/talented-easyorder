@@ -421,13 +421,19 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
   const isConfirmedHolder = lease.isKnown && lease.isHolder;
 
-  // #691 P9: fixed eight hours from the moment this tab became the confirmed holder, counted without interruption. Lease updates,
-  // re-confirmations and own re-acquisitions do not restart it; losing the lease stops it. Date.now() is compared at each check,
-  // so a computer that slept is noticed at the next one. This can only take access away: it sets a flag that the shell turns into
-  // the normal sign-out, and nothing here grants, extends or proves access.
+  // #691 P9: fixed eight hours from the moment this tab became the confirmed holder of this account. Lease updates,
+  // re-confirmations, own re-acquisitions and transient states of the same account (a masked "checking" while the ID token is
+  // renewed, a lease not yet re-read) do not restart it; only a real loss does (the server shows someone else or nobody, or the
+  // account signed out). Date.now() is compared at each check, so a computer that slept is noticed at the next one. This can only
+  // take access away: it sets a flag that the shell turns into the normal sign-out, and nothing here grants, extends or proves access.
+  const holderStartRef = useRef<{ uid: string; at: number } | null>(null);
+  const signedOut = !access.ok && access.reason === 'signed_out';
+  const holderLost = currentUid !== null && lease.isKnown && !lease.isHolder;
   useEffect(() => {
+    if (signedOut || holderLost) { holderStartRef.current = null; return; }
     if (!currentUid || !isConfirmedHolder) return;
-    const startedAt = Date.now();
+    if (holderStartRef.current?.uid !== currentUid) holderStartRef.current = { uid: currentUid, at: Date.now() };
+    const startedAt = holderStartRef.current.at;
     const check = () => {
       if (Date.now() - startedAt >= AUTO_SIGN_OUT_MS) {
         window.clearInterval(timer);
@@ -441,7 +447,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', check);
       setAutoSignOutDue(false);
     };
-  }, [currentUid, isConfirmedHolder]);
+  }, [currentUid, isConfirmedHolder, signedOut, holderLost]);
 
   const acquireLease = async (options: AcquireLeaseOptions = {}): Promise<LeaseResult> => {
     const startingAccess = accessRef.current;
