@@ -903,4 +903,21 @@ describe('#691 P7 — a holder who is taken over sees who took the lease; takeov
     expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true });
     expect(hook.result.current.kicked).toBeNull();
   });
+
+  it('K7: another UID\'s lease is never taken over without a confirmation, even when the local clock says it expired', async () => {
+    const { hook } = await signedInTab({ confirmed: false });
+    // isExpired is a client-clock estimate: a fast clock reports a live lease as expired. It must not skip the confirmation.
+    const looksExpired = (epoch: number) => ({ ...liveOther(epoch), isExpired: true });
+    leaseMocks.getLeaseStatus.mockResolvedValue(looksExpired(1));
+
+    let result: Awaited<ReturnType<typeof hook.result.current.acquireLease>> | undefined;
+    await act(async () => { result = await hook.result.current.acquireLease(); });
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'busy', currentHolderUid: 'op-2', epoch: 1 });
+
+    leaseMocks.acquireLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() });
+    await act(async () => { await hook.result.current.acquireLease({ confirmedTakeoverEpoch: 1 }); });
+    expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true });
+  });
 });

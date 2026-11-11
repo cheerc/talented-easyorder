@@ -225,6 +225,34 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     }
   });
 
+  test('A05a: a fast client clock cannot skip the confirmation: the screen asks first and the lease stays with A until B confirms (#691)', async ({ browser }) => {
+    const operatorA = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
+
+    try {
+      await operatorA.page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
+      expect(await readAccessLease()).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
+
+      // B's clock runs ten minutes fast, so the live lease looks expired to B's screen.
+      await operatorB.page.clock.setFixedTime(new Date(Date.now() + 10 * 60 * 1000));
+      await operatorB.page.reload();
+      await expect(operatorB.page.locator('.auth-gate-busy')).toContainText(E2E_IDENTITIES.operatorA.email, { timeout: 20_000 });
+      await expect(operatorB.page.getByRole('button', { name: '取得系統使用權' })).toHaveCount(0);
+
+      await operatorB.page.getByRole('button', { name: '登入並讓對方登出' }).click();
+      await expect(operatorB.page.getByRole('dialog')).toContainText(E2E_IDENTITIES.operatorA.email);
+      await operatorB.page.getByRole('button', { name: '取消' }).click();
+      await expect(operatorB.page.getByRole('dialog')).toHaveCount(0);
+      await expect(operatorB.page.locator('.operator-strip')).toHaveCount(0);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
+      await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
+    } finally {
+      await operatorA.close();
+      await operatorB.close();
+    }
+  });
+
   test('A05: a slow client clock cannot block a takeover of a lease the server already considers expired (#691)', async ({ browser }) => {
     const operatorA = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);

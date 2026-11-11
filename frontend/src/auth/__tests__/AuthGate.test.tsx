@@ -449,4 +449,37 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByText('目前有人使用中')).toBeTruthy();
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
+
+  it('#691 P7 r2: another UID\'s lease that merely looks expired still needs the confirmation (no plain acquire button)', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 3, updatedAt: new Date() });
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    // A fast local clock makes a live lease look expired (isExpired is only a display estimate).
+    const looksExpired: ActiveLeaseState = {
+      holderUid: 'uid-other-operator', epoch: 2, updatedAt: new Date(0), isKnown: true, isHolder: false, isExpired: true,
+    };
+    render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={looksExpired} onAcquireLease={acquire}><span>x</span></AuthGate>);
+
+    expect(await screen.findByText(/other@example\.com/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '取得系統使用權' })).toBeNull();
+    expect(screen.getByRole('main')).toHaveTextContent('可能已閒置');
+    expect(screen.getByRole('main').textContent).not.toContain('uid-other-operator');
+    expect(acquire).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent('other@example.com');
+    fireEvent.click(screen.getByRole('button', { name: '是，讓對方登出並繼續' }));
+    await waitFor(() => expect(acquire).toHaveBeenCalledWith({ confirmedTakeoverEpoch: 2 }));
+  });
+
+  it('#691 P7 r2: only a vacant lease offers the plain acquire button, and its copy no longer promises a server time check', () => {
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const vacant: ActiveLeaseState = {
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: true, isHolder: false, isExpired: true,
+    };
+    render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={vacant}><span>x</span></AuthGate>);
+    expect(screen.getByRole('button', { name: '取得系統使用權' })).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toMatch(/權威時間|伺服器會依|逾期/);
+  });
 });
