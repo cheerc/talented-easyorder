@@ -1611,6 +1611,13 @@ export function CloudDayClosePage({
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
     ? (snapshot.dayId < selectionDate && day.totals.activeTransactionCount === 0 ? 'no-business' : 'missing-opening')
     : null;
+  // The single way from this page to the orders page of a backfilling day (#689): one button, shown whenever the day can
+  // still take entries. It sits at the top of the close section, or in its own small card when the day cannot be closed yet.
+  const backfillEntry = snapshot?.backfill && onOpenOrders && day?.status !== 'closed' ? (
+    <button type="button" className="cloud-day-close__primary" onClick={() => onOpenOrders(snapshot.dayId)} disabled={busy} data-testid="backfill-align-orders">
+      到訂餐頁補登 {snapshot.dayId}
+    </button>
+  ) : null;
   // The date row uses the same state words as the banner chips (#688).
   const rowState = dayStateLabel({
     status: day?.status ?? 'open', backfill: Boolean(snapshot?.backfill), kind: currentKind, dayId: snapshot?.dayId ?? '', today: selectionDate,
@@ -1793,20 +1800,14 @@ export function CloudDayClosePage({
               </div>
             </div>
 
+            {day && <DayFigures day={day} />}
+
             {snapshot.backfill && (
-              <section className="cloud-day-close__card" aria-label="回填中" data-testid="backfill-info">
-                <h3>回填中</h3>
-                <p>
-                  {snapshot.dayId} 正在回填（原因：{snapshot.backfill.reason}）。補登的訂餐、繳費與櫃台收支都記在這一天並標為「回填」；
-                  補完後在這一頁核對現金再關帳。
-                  {day?.status === 'reopened' && ' 這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。'}
-                </p>
-                {onOpenOrders && day?.status !== 'closed' && (
-                  <button type="button" className="cloud-day-close__primary" onClick={() => onOpenOrders(snapshot.dayId)} disabled={busy}>
-                    到訂餐頁補登 {snapshot.dayId}
-                  </button>
-                )}
-              </section>
+              <p className="cloud-day-close__backfill-status" data-testid="backfill-info">
+                回填中 · 原因：{snapshot.backfill.reason}
+                {day?.status === 'reopened' && ' 這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。'}
+                <HelpTip label="回填說明">補登的訂餐、繳費與櫃台收支都記在這一天並標為「回填」；補完後在這一頁核對現金再關帳。</HelpTip>
+              </p>
             )}
 
             {page.backfillPlan && page.backfillPlan.dayId === snapshot.dayId && !snapshot.backfill && (
@@ -1915,8 +1916,6 @@ export function CloudDayClosePage({
 
             {day && (
               <>
-                <DayFigures day={day} />
-
                 {snapshot.dayId > selectionDate && day.status !== 'closed' && (
                   <Callout variant="warn">未來日期只能預排菜單，不能關帳。</Callout>
                 )}
@@ -1972,12 +1971,20 @@ export function CloudDayClosePage({
                   </section>
                 )}
 
+                {!canClose && backfillEntry && (
+                  <section className="cloud-day-close__card" aria-label="補登">
+                    <h3>補登</h3>
+                    <div className="cloud-day-close__actions">{backfillEntry}</div>
+                  </section>
+                )}
+
                 {canClose && (
                   <section className="cloud-day-close__card" aria-label="全日點現金與關帳">
                     <h3>
                       全日點現金與關帳
                       <HelpTip label="關帳說明">一般現金差額可在下方留下有原因的關帳後補記；若要更正關帳版本，仍須填原因重開後重新關帳。</HelpTip>
                     </h3>
+                    {backfillEntry && <div className="cloud-day-close__actions">{backfillEntry}</div>}
                     <form className="cloud-day-close__form" aria-label={`${snapshot.dayId} 關帳`} onSubmit={submitClose}>
                       {backfillClose && alignLookup?.status === 'ready' && (
                         <div className="cloud-day-close__notice" data-testid="backfill-align">
@@ -1993,11 +2000,6 @@ export function CloudDayClosePage({
                           {alignGap !== null && alignGap !== 0 && (
                             <p role="alert" data-testid="backfill-align-gap">
                               差 {formatMoney(Math.abs(alignGap))}，不能關帳。請回到訂餐頁的回填模式，補登 {snapshot.dayId} 缺的交易，或補記收支（含呆帳）後再回來。
-                              {onOpenOrders && (
-                                <button type="button" className="cloud-day-close__secondary" onClick={() => onOpenOrders(snapshot.dayId)} disabled={busy} data-testid="backfill-align-orders">
-                                  到訂餐頁補登 {snapshot.dayId}
-                                </button>
-                              )}
                             </p>
                           )}
                         </div>

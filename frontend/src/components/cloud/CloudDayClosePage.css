@@ -107,6 +107,13 @@
   border: 1px solid var(--danger);
 }
 
+.cloud-day-close__backfill-status {
+  margin: 0;
+  color: var(--ink-hint);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
 .cloud-day-close__notice {
   color: var(--ink);
   background: var(--success-soft);
