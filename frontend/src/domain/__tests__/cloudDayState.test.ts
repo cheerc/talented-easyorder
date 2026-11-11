@@ -23,6 +23,11 @@ describe('dayStateLabel（#688：日期列與橫幅 chip 共用的狀態文字�
     expect(dayStateLabel({ status: 'open', backfill: false, kind: 'missing-opening', dayId: TODAY, today: TODAY }).text).toBe('待確認開帳');
   });
 
+  it('keeps a future day on 開啟中 even without opening cash: only today and past days wait for the opening (#688 nit)', () => {
+    expect(dayStateLabel({ status: 'open', backfill: false, kind: 'missing-opening', dayId: '2026-11-12', today: TODAY })).toEqual({ text: '開啟中', variant: 'warn' });
+    expect(dayStateLabel({ status: 'open', backfill: false, kind: 'missing-opening', dayId: TODAY, today: TODAY }).text).toBe('待確認開帳');
+  });
+
   it('calls an open day 開啟中 today or later and 尚未關帳 once it is in the past', () => {
     expect(dayStateLabel({ status: 'open', backfill: false, kind: 'needs-close', dayId: TODAY, today: TODAY })).toEqual({ text: '開啟中', variant: 'warn' });
     expect(dayStateLabel({ status: 'open', backfill: false, kind: null, dayId: '2026-11-12', today: TODAY }).text).toBe('開啟中');

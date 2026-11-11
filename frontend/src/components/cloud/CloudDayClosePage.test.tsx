@@ -1085,14 +1085,14 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     const onOpenOrders = vi.fn();
     renderAt(gap, { onOpenOrders });
     const info = await screen.findByTestId('backfill-info');
-    expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
+    expect(info).toHaveTextContent('回填中 · 原因：那天斷線');
     expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
     // The viewed day is not repeated in the banner (#688): its state is shown by the date row.
     expect(screen.queryByTestId(`cloud-unclosed-backfill-${gap}`)).not.toBeInTheDocument();
     const state = screen.getByTestId('cloud-day-state');
     expect(within(state).getByText('回填中')).toHaveClass('badge-ui', 'badge-warn');
     expect(state).toHaveTextContent('過去日期');
-    fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    fireEvent.click(screen.getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
 
@@ -1107,11 +1107,11 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     const onOpenOrders = vi.fn();
     renderAt(gap, { onOpenOrders });
     const info = await screen.findByTestId('backfill-info');
-    expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
+    expect(info).toHaveTextContent('回填中 · 原因：那天斷線');
     expect(info).toHaveTextContent('這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。');
     expect(screen.queryByTestId(`cloud-unclosed-${gap}`)).not.toBeInTheDocument();
     expect(within(screen.getByTestId('cloud-day-state')).getByText('回填中（已重開）')).toHaveClass('badge-ui', 'badge-warn');
-    fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    fireEvent.click(screen.getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
 
@@ -1214,9 +1214,77 @@ describe('CloudDayClosePage: aligned close of a backfilled day (contract §14)',
     expect(gapNote).toHaveTextContent('差 NT$ 50，不能關帳');
     expect(gapNote).toHaveTextContent('回到訂餐頁的回填模式');
     expect(screen.getByRole('button', { name: '確認關帳' })).toBeDisabled();
-    fireEvent.click(within(gapNote).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    // The one entry sits at the top of the close section, not inside the difference note (#689).
+    expect(within(gapNote).queryByRole('button', { name: /到訂餐頁補登/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('backfill-align-orders'));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
     expect(repository.closeDay).not.toHaveBeenCalled();
+  });
+
+  describe('layout of a backfilling day (#689 P5)', () => {
+    const closeSection = () => screen.getByRole('region', { name: '全日點現金與關帳' });
+    const before = (first: Element, second: Element) => Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    it('stacks the day figures, then one small backfill status line with the reason, then the close section', async () => {
+      repository.read.mockResolvedValue(gapDay(0));
+      renderAt(gap, { onOpenOrders: vi.fn() });
+      const status = await screen.findByTestId('backfill-info');
+      const figures = screen.getByLabelText('營業日現金統計');
+      expect(status).toHaveTextContent('回填中 · 原因：那天斷線');
+      expect(status.tagName).toBe('P');
+      expect(screen.queryByRole('heading', { name: '回填中' })).not.toBeInTheDocument();
+      expect(before(figures, status)).toBe(true);
+      expect(before(status, closeSection())).toBe(true);
+    });
+
+    it('offers exactly one 到訂餐頁補登 button, at the top of the close section, when the cash gap is not zero', async () => {
+      repository.read.mockResolvedValue(gapDay(0));
+      renderAt(gap, { onOpenOrders: vi.fn() });
+      expect(await screen.findByTestId('backfill-align-gap')).toHaveTextContent('差 NT$ 50，不能關帳');
+      const buttons = screen.getAllByRole('button', { name: /到訂餐頁補登/ });
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]).toHaveAttribute('data-testid', 'backfill-align-orders');
+      expect(closeSection()).toContainElement(buttons[0]);
+      expect(before(buttons[0], screen.getByRole('form', { name: `${gap} 關帳` }))).toBe(true);
+    });
+
+    it('still offers the single button, and no difference note, when the aligned cash matches', async () => {
+      renderAt(gap, { onOpenOrders: vi.fn() });
+      await screen.findByTestId('backfill-align-target');
+      expect(screen.getAllByRole('button', { name: /到訂餐頁補登/ })).toHaveLength(1);
+      expect(screen.queryByTestId('backfill-align-gap')).not.toBeInTheDocument();
+    });
+
+    it('keeps the reopened reminder visible in the status line', async () => {
+      repository.read.mockResolvedValue(dayState({
+        ...gapDay(-50), status: 'reopened', lastSettlementRevision: 1, settlements: [version(1)],
+      }));
+      renderAt(gap, { onOpenOrders: vi.fn() });
+      expect(await screen.findByTestId('backfill-info')).toHaveTextContent('這一天關過帳後重開；補登完要再關帳一次');
+    });
+
+    it('offers no 補登 button on a backfilling day that is already closed', async () => {
+      repository.read.mockResolvedValue(dayState({
+        ...gapDay(-50), status: 'closed', lastSettlementRevision: 1, settlements: [version(1)],
+      }));
+      renderAt(gap, { onOpenOrders: vi.fn() });
+      await screen.findByTestId('backfill-info');
+      expect(screen.queryByRole('button', { name: /到訂餐頁補登/ })).not.toBeInTheDocument();
+    });
+
+    it('still shows the 補登 entry when the day cannot be closed yet (no opening cash)', async () => {
+      repository.read.mockResolvedValue(dayState({ dayId: gap, openingCash: null, expectedCash: null }));
+      renderAt(gap, { onOpenOrders: vi.fn() });
+      await screen.findByTestId('backfill-info');
+      expect(screen.queryByRole('form', { name: `${gap} 關帳` })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /到訂餐頁補登/ })).toHaveLength(1);
+    });
+
+    it('shows no 補登 button when the page has no way to open the orders page', async () => {
+      renderAt(gap);
+      await screen.findByTestId('backfill-info');
+      expect(screen.queryByRole('button', { name: /到訂餐頁補登/ })).not.toBeInTheDocument();
+    });
   });
 
   it('refuses a count that differs from the aligned cash even when a note is given', async () => {
@@ -2463,6 +2531,18 @@ describe('CloudDayClosePage: the banner and the no-business list leave out the v
     const list = await screen.findByTestId('cloud-no-business-days');
     expect(within(list).getByTestId('cloud-no-business-2026-10-09')).toBeInTheDocument();
     expect(within(list).queryByTestId(`cloud-no-business-${quiet}`)).not.toBeInTheDocument();
+  });
+
+  it('keeps a future day without opening cash on 開啟中 in the date row (#688 nit)', async () => {
+    const future = '2026-10-20';
+    serve([]);
+    repository.read.mockImplementation(async (dayId: string) => dayState({ dayId, openingCash: null, expectedCash: null, totals: { ...dayState().totals, activeTransactionCount: 0 } }));
+    renderPage({ initialDayId: future });
+    expect(await screen.findByRole('heading', { name: `${future} 日結` })).toBeInTheDocument();
+    const state = screen.getByTestId('cloud-day-state');
+    expect(state).toHaveTextContent('未來日期');
+    expect(within(state).getByText('開啟中')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(state).queryByText('待確認開帳')).not.toBeInTheDocument();
   });
 
   it.each([

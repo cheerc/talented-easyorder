@@ -1692,7 +1692,7 @@ test.describe('P11c2b Cloud Backfill', () => {
       expect(await readAdminDocument('backfillDays', gap)).toMatchObject({ dayId: gap, reason: '前天停電沒有用系統' });
 
       // 3. 訂餐頁：橫幅、其他餐點、退款停用
-      await main.getByTestId('backfill-info').getByRole('button', { name: `到訂餐頁補登 ${gap}` }).click();
+      await main.getByTestId('backfill-align-orders').click();
       const orders = page.getByTestId('cloud-orders-page');
       await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${gap}（原因：前天停電沒有用系統）`);
       await orders.getByLabel('搜尋編號、姓名或別名').fill('901');
