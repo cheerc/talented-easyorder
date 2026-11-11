@@ -79,32 +79,52 @@ export function AuthGate({
   const targetStillOccupies = confirmTarget !== null && confirmTarget.holderUid === observedHolderUid && confirmTarget.epoch === observedEpoch
     && watchedOccupantUid !== null;
 
-  // #691 P9: when the server shows nobody holds the lease, an approved account enters by itself, once per observed vacancy.
-  // Only that observation counts: another account's lease (whatever the local clock thinks of its age), this account's own lease
-  // in another tab, an unconfirmed lease, an unapproved account and a pending "you were signed out" notice never start it.
-  const vacantKey = access.ok && activeLease?.isKnown && activeLease.holderUid === null && !activeLease.isHolder
-    ? `${activeLease.epoch}:${activeLease.updatedAt?.getTime() ?? 'none'}` : null;
-  const autoAttemptedKey = useRef<string | null>(null);
-  const [autoFailed, setAutoFailed] = useState<{ key: string; message: string } | null>(null);
-  const runAutoEnter = useEffectEvent(async (key: string) => {
+  // #691 P9 (review r2): one automatic entry per sign-in of this tab, and only when the FIRST lease the server shows after the
+  // account is approved is vacant. Every later vacancy (the holder leaves, the eight hours end, a failed attempt, this tab was
+  // logged out) offers the explicit button, so a forgotten tab or a second tab of the same account never takes the lease behind
+  // someone's back. Another account's lease (whatever the local clock thinks of its age), this account's own lease in another
+  // tab, an unconfirmed lease, an unapproved account and a pending "you were signed out" notice never start it.
+  const signInUid = access.ok ? access.profile.uid : null;
+  const [auto, setAuto] = useState<{ uid: string; phase: 'trying' | 'entered' | 'settled' | 'failed'; message: string; epoch: number } | null>(null);
+  if (signInUid === null) {
+    if (auto !== null) setAuto(null);
+  } else if ((auto === null || auto.uid !== signInUid) && activeLease?.isKnown) {
+    const firstIsVacant = activeLease.holderUid === null && !activeLease.isHolder && kicked === null && !!doAcquire;
+    setAuto({ uid: signInUid, phase: firstIsVacant ? 'trying' : 'settled', message: '', epoch: 0 });
+  }
+  const autoStartedFor = useRef<string | null>(null);
+  const runAutoEnter = useEffectEvent(async (uid: string) => {
+    let next: { uid: string; phase: 'entered' | 'failed'; message: string; epoch: number } = { uid, phase: 'entered', message: '', epoch: 0 };
     try {
       const result = await doAcquire!();
-      if (result.status === 'acquired') return;
-      setAutoFailed({
-        key,
-        message: result.status === 'busy' ? '對方仍在使用中，請稍後再試。'
-          : result.status === 'stale_epoch' ? '畫面資訊已過期，請再試一次。' : result.message,
-      });
+      if (result.status === 'acquired') {
+        next = { uid, phase: 'entered', message: '', epoch: result.epoch };
+      } else {
+        next = {
+          uid,
+          phase: 'failed',
+          epoch: 0,
+          message: result.status === 'busy' ? '對方仍在使用中，請稍後再試。'
+            : result.status === 'stale_epoch' ? '畫面資訊已過期，請再試一次。' : result.message,
+        };
+      }
     } catch (error) {
-      setAutoFailed({ key, message: error instanceof Error ? error.message : '目前無法連線，請稍後再試。' });
+      next = { uid, phase: 'failed', epoch: 0, message: error instanceof Error ? error.message : '目前無法連線，請稍後再試。' };
     }
+    setAuto(current => (current !== null && current.uid === uid ? next : current));
   });
-  const autoEnterBlocked = kicked !== null || !doAcquire;
+  const autoTryingUid = auto?.phase === 'trying' ? auto.uid : null;
   useEffect(() => {
-    if (vacantKey === null || autoEnterBlocked || autoAttemptedKey.current === vacantKey) return;
-    autoAttemptedKey.current = vacantKey;
-    void runAutoEnter(vacantKey);
-  }, [vacantKey, autoEnterBlocked]);
+    if (signInUid === null) { autoStartedFor.current = null; return; }
+    if (autoTryingUid === null || autoStartedFor.current === autoTryingUid) return;
+    autoStartedFor.current = autoTryingUid;
+    void runAutoEnter(autoTryingUid);
+  }, [signInUid, autoTryingUid]);
+  // While the attempt runs, and until the screen has caught up with the lease it just took (an older vacant observation is
+  // still showing), the gate says it is connecting instead of flashing the button. A vacancy newer than that is a later release.
+  const autoChecking = activeLease?.isKnown === true && activeLease.holderUid === null && !activeLease.isHolder
+    && (auto?.phase === 'trying' || (auto?.phase === 'entered' && activeLease.epoch < auto.epoch));
+  const autoFailedMessage = auto?.phase === 'failed' ? auto.message : '';
 
   useEffect(() => {
     if (watchedOccupantUid === null) return;
@@ -367,7 +387,7 @@ export function AuthGate({
               }}
             />
           </div>
-        ) : vacantKey !== null && !autoEnterBlocked && autoFailed?.key !== vacantKey ? (
+        ) : autoChecking ? (
           <div className="auth-gate-checking" role="status" aria-label="正在進入系統">
             <h2>正在連線…</h2>
             <p>正在進入系統。</p>
@@ -375,10 +395,10 @@ export function AuthGate({
         ) : (
           <div className="auth-gate-acquire" aria-label="開始使用">
             <h2>開始使用</h2>
-            <p>{autoFailed?.key === vacantKey ? '無法自動進入，請按「開始使用」再試一次。' : '目前沒有人使用。按下按鈕即可開始使用。'}</p>
-            {(busyError || (autoFailed?.key === vacantKey && autoFailed.message)) && (
+            <p>{autoFailedMessage ? '無法自動進入，請按「開始使用」再試一次。' : '目前沒有人使用。按下按鈕即可開始使用。'}</p>
+            {(busyError || autoFailedMessage) && (
               <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>
-                {busyError || autoFailed?.message}
+                {busyError || autoFailedMessage}
               </div>
             )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
