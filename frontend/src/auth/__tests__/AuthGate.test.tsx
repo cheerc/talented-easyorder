@@ -418,21 +418,77 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
   });
 
-  it('#691 P9: a new vacancy (a later epoch) is entered again after the earlier attempt failed', async () => {
+  // Review r1: the automatic entry is one chance per sign-in, and only for the first lease the server shows after approval.
+  // Every later vacancy (the person in front of this tab logs out, the 8 hours end, ...) asks for the explicit button, so a
+  // forgotten tab or a second tab of the same account never grabs the lease behind someone's back.
+  const gate = (lease: ActiveLeaseState, acquire: ReturnType<typeof vi.fn>, extra: Partial<React.ComponentProps<typeof AuthGate>> = {}) => (
+    <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={lease} onAcquireLease={acquire} {...extra}>
+      <span>x</span>
+    </AuthGate>
+  );
+  const busyLease = (epoch: number): ActiveLeaseState => ({
+    holderUid: 'uid-other', epoch, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+  });
+  const ownLease = (epoch: number): ActiveLeaseState => ({
+    holderUid: 'uid-me', epoch, updatedAt: new Date(), isKnown: true, isHolder: true, isExpired: false,
+  });
+
+  it('#691 P9 r2: an attempt that failed is not repeated for a later vacancy; only the button tries again', async () => {
     const acquire = vi.fn().mockResolvedValue({ status: 'lost', message: '目前無法連線，請稍後再試。' });
-    const view = render(
-      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(0)} onAcquireLease={acquire}>
-        <span>x</span>
-      </AuthGate>,
-    );
+    const view = render(gate(vacantLease(0), acquire));
     await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
     await screen.findByRole('button', { name: '開始使用' });
 
-    view.rerender(
-      <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(2)} onAcquireLease={acquire}>
-        <span>x</span>
-      </AuthGate>,
-    );
+    view.rerender(gate(vacantLease(2), acquire));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(2));
+  });
+
+  it('#691 P9 r2: a tab that saw the lease in use never enters by itself when the holder leaves', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 4, updatedAt: new Date() });
+    const view = render(gate(busyLease(3), acquire));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(acquire).not.toHaveBeenCalled();
+
+    view.rerender(gate(vacantLease(4), acquire));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '正在連線…' })).toBeNull();
+  });
+
+  it('#691 P9 r2: after this account releases (or its eight hours end) another tab of the same account does not take the lease back', async () => {
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 3, updatedAt: new Date() });
+    const view = render(gate(ownLease(1), acquire));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    view.rerender(gate(vacantLease(2), acquire));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
+  });
+
+  it('#691 P9 r2: a tab that was logged out by someone else does not take the lease back when that person leaves', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 5, updatedAt: new Date() });
+    const view = render(gate(ownLease(1), acquire));
+    view.rerender(gate(busyLease(2), acquire, { kicked: { takerEmail: 'other@example.com' }, onAcknowledgeKicked: vi.fn() }));
+    view.rerender(gate(busyLease(2), acquire, { kicked: null, onAcknowledgeKicked: vi.fn() }));
+    view.rerender(gate(vacantLease(3), acquire, { kicked: null, onAcknowledgeKicked: vi.fn() }));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
+  });
+
+  it('#691 P9 r2: signing out and signing in again earns one new automatic entry', async () => {
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 1, updatedAt: new Date() });
+    const view = render(gate(vacantLease(0), acquire));
+    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
+
+    view.rerender(<AuthGate auth={mockAuth} db={mockDb} access={{ ok: false, reason: 'signed_out' }}><span>x</span></AuthGate>);
+    view.rerender(gate(vacantLease(2), acquire));
     await waitFor(() => expect(acquire).toHaveBeenCalledTimes(2));
   });
 
@@ -469,7 +525,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(acquire).not.toHaveBeenCalled();
   });
 
-  it('#691 P9: after being logged out by someone else the notice comes first; the vacancy is entered only after “我知道了”', async () => {
+  it('#691 P9: with a “you were logged out” notice on screen nothing is entered, and after “我知道了” only the button offers it', async () => {
     const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 4, updatedAt: new Date() });
     const view = render(
       <AuthGate auth={mockAuth} db={mockDb} access={approved} lease={vacantLease(3)} onAcquireLease={acquire}
@@ -486,7 +542,9 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
         <span>x</span>
       </AuthGate>,
     );
-    await waitFor(() => expect(acquire).toHaveBeenCalledTimes(1));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
   });
 
   it('#691 P9: the login screen says why when the fixed eight hours ended the session, and says nothing otherwise', () => {

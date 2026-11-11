@@ -187,7 +187,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     }
   });
 
-  test('A04: releasing from one same-UID page never lets the released page take the lease back, and the other page settles (#691)', async ({ browser }) => {
+  test('A04: releasing from one same-UID page leaves the other page masked without auto-acquiring', async ({ browser }) => {
     const context = await browser.newContext({ baseURL: E2E_BASE_URL });
     const pageA = await context.newPage();
     const pageB = await context.newPage();
@@ -210,20 +210,15 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
         if (!await menuA.evaluate(element => (element as HTMLDetailsElement).open)) await menuA.locator('summary').click();
         await menuA.getByRole('button', { name: '登出' }).click({ timeout: 2_000 });
       }).toPass({ timeout: 20_000 });
-      // A's release makes the lease vacant (epoch 2). Both pages share one browser Auth session, so A's sign-out also signs B
-      // out; whether B sees the vacancy first (and enters by itself, epoch 3) or the sign-out first (login screen, lease stays
-      // vacant) depends on timing and both are correct. What must hold either way: the released A page stays on the login
-      // screen and never takes the lease back, and B ends on a settled screen instead of a masked one.
-      await expect.poll(async () => (await readAccessLease()).epoch).toBeGreaterThanOrEqual(2);
-      await expect(pageA.locator('.auth-gate')).toBeVisible();
-      await expect(pageB.locator('.auth-gate, .operator-strip').first()).toBeVisible();
-      await pageA.waitForTimeout(1_000);
+      // #691 P9 r2: B saw the lease held (by A's tab of the same account) when it came up, so the vacancy A leaves behind is
+      // never entered automatically, by B or by A's own signed-out page: the lease stays vacant.
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
+      await expect(pageB.locator('.operator-strip')).toHaveCount(0);
+      await expect(pageB.locator('.auth-gate')).toBeVisible();
+      await pageB.waitForTimeout(500);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
+      await expect(pageB.locator('.operator-strip')).toHaveCount(0);
       await expect(pageA.locator('.operator-strip')).toHaveCount(0);
-      await expect(pageA.locator('.auth-gate')).toBeVisible();
-      const settled = await readAccessLease();
-      expect(settled.epoch).toBeLessThanOrEqual(3);
-      if (settled.epoch === 3) expect(settled.holderUid).toBe(sessionA.uid);
-      else expect(settled.holderUid).toBeNull();
     } finally {
       await context.close();
     }
