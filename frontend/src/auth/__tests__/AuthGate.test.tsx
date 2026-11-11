@@ -655,7 +655,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     const vacant: ActiveLeaseState = { holderUid: null, epoch: 0, updatedAt: null, isKnown: true, isHolder: false, isExpired: true };
     const acquire = vi.fn().mockResolvedValue({ status: 'stale_epoch', expectedEpoch: 0, actualEpoch: 1 });
     render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={vacant} onAcquireLease={acquire}><span>x</span></AuthGate>);
-    fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
+    // #691 P9: the vacant lease is entered automatically; its failure is what the screen reports.
     const message = await screen.findByText('畫面資訊已過期，請再試一次。');
     expect(message.textContent).not.toMatch(/租約|使用權|Epoch|世代/);
   });

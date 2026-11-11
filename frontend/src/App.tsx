@@ -35,6 +35,7 @@ import { isPrototypeMode, validateAppModeConfig } from './appMode';
 import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { useOperator } from './auth/OperatorContext';
+import { useAutoSignOut } from './auth/autoSignOut';
 import { AppShell } from './components/AppShell';
 import { navigationKey, isCompositionKey } from './components/navigationKeys';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
@@ -409,6 +410,7 @@ function CloudSections({ db, leaseEpoch, identityKey, operatorUid, hasUnresolved
   const [leaveTarget, setLeaveTarget] = useState<{ section: CloudSection; dayId?: string; postCloseEntry?: OpeningMismatchAnomaly } | null>(null);
   const dirtyRef = useRef(false);
   const operator = useOperator();
+  const { autoSignOutDue, noteAutoSignOut } = useFirebase();
   const { tweaks, setTweak } = useTweaks();
   const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
   const [postCloseEntryFocus, setPostCloseEntryFocus] = useState<OpeningMismatchAnomaly | undefined>(undefined);
@@ -419,6 +421,8 @@ function CloudSections({ db, leaseEpoch, identityKey, operatorUid, hasUnresolved
   const [accountHistoryRange, setAccountHistoryRange] = useState<CloudLedgerDateRange | null>(null);
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
+  // #691 P9: the fixed eight hours end in the operator menu's normal sign-out, and wait while a command is unresolved.
+  useAutoSignOut({ due: autoSignOutDue, locked: navigationLocked, signOut: operator?.signOut, onSigningOut: noteAutoSignOut });
   const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
 
   const reportNavigationState = useCallback((reportedKey: string, state: 'recovering' | 'revoked' | 'resolved') => {

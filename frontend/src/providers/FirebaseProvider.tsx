@@ -20,6 +20,7 @@ import {
 } from '../firebase/activeAccountLease';
 import { subscribeDataHead, type DataHeadSignal } from '../firebase/dataHeadWatch';
 import { clearSensitivePosData } from '../store/clearSensitivePosData';
+import { AUTO_SIGN_OUT_CHECK_MS, AUTO_SIGN_OUT_MS } from '../auth/autoSignOut';
 import { emitError } from '../errors/errorBus';
 
 /** #691: this tab was the holder and another operator took the lease over. `takerEmail` is null when it cannot be read. */
@@ -46,6 +47,14 @@ export interface FirebaseContextValue {
   releaseLease: () => Promise<boolean>;
   kicked: KickedNotice | null;
   acknowledgeKicked: () => void;
+  /**
+   * #691 P9: the fixed eight hours since this tab became the confirmed holder have passed (never extended by activity). The
+   * local clock only takes access away here: the shell signs out through the normal flow and never uses this to grant anything.
+   */
+  autoSignOutDue: boolean;
+  /** The last sign-out was the automatic one; the login screen says why until the next login. */
+  autoSignedOut: boolean;
+  noteAutoSignOut: () => void;
 }
 
 const FirebaseContext = createContext<FirebaseContextValue | null>(null);
@@ -69,6 +78,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const accessRef = useRef<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const [lease, setLease] = useState<ActiveLeaseState>(defaultLeaseState);
   const [kicked, setKicked] = useState<KickedNotice | null>(null);
+  const [autoSignOutDue, setAutoSignOutDue] = useState(false);
+  const [autoSignedOut, setAutoSignedOut] = useState(false);
   const leaseRef = useRef<ActiveLeaseState>(defaultLeaseState);
   const confirmedEpochRef = useRef<number | null>(null);
   const probedEpochRef = useRef<number | null>(null);
@@ -135,6 +146,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const guardedSetAccess = (nextAccess: OperatorAccess) => {
       if (cancelled) return;
+      // A new login (not a token refresh of the same session) clears the reason of the last automatic sign-out.
+      if (nextAccess.ok && !accessRef.current.ok) setAutoSignedOut(false);
       accessRef.current = nextAccess;
       if (!nextAccess.ok) {
         confirmedEpochRef.current = null;
@@ -408,6 +421,28 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
   const isConfirmedHolder = lease.isKnown && lease.isHolder;
 
+  // #691 P9: fixed eight hours from the moment this tab became the confirmed holder, counted without interruption. Lease updates,
+  // re-confirmations and own re-acquisitions do not restart it; losing the lease stops it. Date.now() is compared at each check,
+  // so a computer that slept is noticed at the next one. This can only take access away: it sets a flag that the shell turns into
+  // the normal sign-out, and nothing here grants, extends or proves access.
+  useEffect(() => {
+    if (!currentUid || !isConfirmedHolder) return;
+    const startedAt = Date.now();
+    const check = () => {
+      if (Date.now() - startedAt >= AUTO_SIGN_OUT_MS) {
+        window.clearInterval(timer);
+        setAutoSignOutDue(true);
+      }
+    };
+    const timer = window.setInterval(check, AUTO_SIGN_OUT_CHECK_MS);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+      setAutoSignOutDue(false);
+    };
+  }, [currentUid, isConfirmedHolder]);
+
   const acquireLease = async (options: AcquireLeaseOptions = {}): Promise<LeaseResult> => {
     const startingAccess = accessRef.current;
     if (!fb?.db || !startingAccess.ok) {
@@ -515,7 +550,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease, kicked, acknowledgeKicked: () => setKicked(null) }}>
+    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease, kicked, acknowledgeKicked: () => setKicked(null), autoSignOutDue, autoSignedOut, noteAutoSignOut: () => setAutoSignedOut(true) }}>
       <DataHeadProvider db={fb?.db ?? null} uid={currentUid} confirmedHolder={isConfirmedHolder} epoch={lease.epoch}>
         {children}
       </DataHeadProvider>

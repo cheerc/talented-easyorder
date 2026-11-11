@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { signInWithGoogle, signOutOperator, type OperatorAccess } from '../firebase/authService';
@@ -10,6 +10,7 @@ import {
 } from '../firebase/activeAccountLease';
 import { useFirebase, type AcquireLeaseOptions, type KickedNotice } from '../providers/FirebaseProvider';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { AUTO_SIGN_OUT_NOTICE } from './autoSignOut';
 import { OperatorContext } from './OperatorContext';
 
 export interface AuthGateProps {
@@ -23,6 +24,8 @@ export interface AuthGateProps {
   /** #691: this tab was taken over by another operator; shown until acknowledged. Defaults to the FirebaseProvider's. */
   kicked?: KickedNotice | null;
   onAcknowledgeKicked?: () => void;
+  /** #691 P9: the last sign-out was the automatic one after eight hours; the login screen says why. Defaults to the provider's. */
+  autoSignedOut?: boolean;
   children: ReactNode;
 }
 
@@ -35,6 +38,7 @@ export function AuthGate({
   onReleaseLease: propRelease,
   kicked: propKicked,
   onAcknowledgeKicked: propAcknowledgeKicked,
+  autoSignedOut: propAutoSignedOut,
   children,
   showOperatorStrip = true,
 }: AuthGateProps) {
@@ -52,6 +56,7 @@ export function AuthGate({
   const doRelease = propRelease ?? contextValue?.releaseLease;
   const kicked = propKicked !== undefined ? propKicked : (contextValue?.kicked ?? null);
   const acknowledgeKicked = propAcknowledgeKicked ?? contextValue?.acknowledgeKicked;
+  const autoSignedOut = propAutoSignedOut ?? contextValue?.autoSignedOut ?? false;
 
   const [lastCheckTime, setLastCheckTime] = useState<number>(0);
   const [throttleMessage, setThrottleMessage] = useState<string>('');
@@ -73,6 +78,33 @@ export function AuthGate({
   // grow, so a lapsed target can never match again and a later occupant never inherits it.
   const targetStillOccupies = confirmTarget !== null && confirmTarget.holderUid === observedHolderUid && confirmTarget.epoch === observedEpoch
     && watchedOccupantUid !== null;
+
+  // #691 P9: when the server shows nobody holds the lease, an approved account enters by itself, once per observed vacancy.
+  // Only that observation counts: another account's lease (whatever the local clock thinks of its age), this account's own lease
+  // in another tab, an unconfirmed lease, an unapproved account and a pending "you were signed out" notice never start it.
+  const vacantKey = access.ok && activeLease?.isKnown && activeLease.holderUid === null && !activeLease.isHolder
+    ? `${activeLease.epoch}:${activeLease.updatedAt?.getTime() ?? 'none'}` : null;
+  const autoAttemptedKey = useRef<string | null>(null);
+  const [autoFailed, setAutoFailed] = useState<{ key: string; message: string } | null>(null);
+  const runAutoEnter = useEffectEvent(async (key: string) => {
+    try {
+      const result = await doAcquire!();
+      if (result.status === 'acquired') return;
+      setAutoFailed({
+        key,
+        message: result.status === 'busy' ? '對方仍在使用中，請稍後再試。'
+          : result.status === 'stale_epoch' ? '畫面資訊已過期，請再試一次。' : result.message,
+      });
+    } catch (error) {
+      setAutoFailed({ key, message: error instanceof Error ? error.message : '目前無法連線，請稍後再試。' });
+    }
+  });
+  const autoEnterBlocked = kicked !== null || !doAcquire;
+  useEffect(() => {
+    if (vacantKey === null || autoEnterBlocked || autoAttemptedKey.current === vacantKey) return;
+    autoAttemptedKey.current = vacantKey;
+    void runAutoEnter(vacantKey);
+  }, [vacantKey, autoEnterBlocked]);
 
   useEffect(() => {
     if (watchedOccupantUid === null) return;
@@ -120,6 +152,7 @@ export function AuthGate({
 
         {access.reason === 'signed_out' && (
           <>
+            {autoSignedOut && <p role="status">{AUTO_SIGN_OUT_NOTICE}</p>}
             <p>請使用 Google 帳號登入系統。</p>
             <button type="button" className="auth-gate-primary" disabled={signingIn} onClick={() => void signIn()}>
               {signingIn ? '正在等待 Google 登入…' : '使用 Google 登入'}
@@ -334,11 +367,20 @@ export function AuthGate({
               }}
             />
           </div>
+        ) : vacantKey !== null && !autoEnterBlocked && autoFailed?.key !== vacantKey ? (
+          <div className="auth-gate-checking" role="status" aria-label="正在進入系統">
+            <h2>正在連線…</h2>
+            <p>正在進入系統。</p>
+          </div>
         ) : (
           <div className="auth-gate-acquire" aria-label="開始使用">
             <h2>開始使用</h2>
-            <p>目前沒有人使用。按下按鈕即可開始使用。</p>
-            {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
+            <p>{autoFailed?.key === vacantKey ? '無法自動進入，請按「開始使用」再試一次。' : '目前沒有人使用。按下按鈕即可開始使用。'}</p>
+            {(busyError || (autoFailed?.key === vacantKey && autoFailed.message)) && (
+              <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>
+                {busyError || autoFailed?.message}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <button type="button" className="auth-gate-primary" onClick={() => void attemptAcquire()} disabled={isAcquiring}>
                 {isAcquiring ? '進入中...' : '開始使用'}
