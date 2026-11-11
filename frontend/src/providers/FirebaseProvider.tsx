@@ -279,7 +279,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const offline = result.status === 'lost' && /無法連線|回讀失敗|無法從伺服器/i.test(result.message);
+      const offline = result.status === 'lost' && result.offline === true;
       if (offline) {
         markUnknownAfterProbeFailure(epoch, result.message);
         return;
