@@ -2465,6 +2465,18 @@ describe('CloudDayClosePage: the banner and the no-business list leave out the v
     expect(within(list).queryByTestId(`cloud-no-business-${quiet}`)).not.toBeInTheDocument();
   });
 
+  it('keeps a future day without opening cash on 開啟中 in the date row (#688 nit)', async () => {
+    const future = '2026-10-20';
+    serve([]);
+    repository.read.mockImplementation(async (dayId: string) => dayState({ dayId, openingCash: null, expectedCash: null, totals: { ...dayState().totals, activeTransactionCount: 0 } }));
+    renderPage({ initialDayId: future });
+    expect(await screen.findByRole('heading', { name: `${future} 日結` })).toBeInTheDocument();
+    const state = screen.getByTestId('cloud-day-state');
+    expect(state).toHaveTextContent('未來日期');
+    expect(within(state).getByText('開啟中')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(state).queryByText('待確認開帳')).not.toBeInTheDocument();
+  });
+
   it.each([
     ['a backfilling day', needsClose(gap, { backfill: marker }), '回填中'],
     ['a reopened backfilling day', needsClose(gap, { status: 'reopened', backfill: marker }), '回填中（已重開）'],
