@@ -846,8 +846,8 @@ export function CloudAccountHistoryPage({
       {!loading && snapshot && currentStudent && range && <>
         <p className="cloud-account-history__snapshot" data-testid="account-history-ready" data-source-seq={snapshot.account.sourceSeq} data-dataset-id={snapshot.account.datasetId}>{range.startDate}–{range.endDate} · {currentStudent.displayName}（目前編號 {currentStudent.studentCode}）</p>
         <dl className="cloud-account-history__balance">
-          <div><dt>期初餘額</dt><dd><CloudAccountBalance amount={snapshot.account.openingBalance} currency="$" /></dd></div>
-          <div><dt>目前帳戶餘額</dt><dd><CloudAccountBalance amount={snapshot.account.currentBalance} currency="$" /></dd></div>
+          <div><dt>期初餘額</dt><dd><CloudAccountBalance amount={snapshot.account.openingBalance} /></dd></div>
+          <div><dt>目前帳戶餘額</dt><dd><CloudAccountBalance amount={snapshot.account.currentBalance} /></dd></div>
           <div><dt>帳戶狀態</dt><dd><StatusBadge variant={currentStudent.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{currentStudent.status === 'active' ? '使用中' : '已停用'}</StatusBadge></dd></div>
         </dl>
         <Callout variant="info" className="cloud-account-history__callout"><span><strong>依目前更正後資料重算</strong>，不是交易當時餘額。</span>
@@ -871,7 +871,7 @@ export function CloudAccountHistoryPage({
                       <pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></article>)}
                 </details></td>
                 <td>{transaction.studentNameSnapshot}</td><td className="dt-num">{formatMoney(transaction.amount)} · 餐費 {formatMoney(transaction.mealPrice)} · 收款 {formatMoney(transaction.paidAmount)}</td>
-                <td className="dt-num">{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : <CloudAccountBalance amount={transaction.afterBalance} currency="$" />}</td>
+                <td className="dt-num">{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : <CloudAccountBalance amount={transaction.afterBalance} />}</td>
                 <td><StatusBadge variant={transaction.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}</StatusBadge>{transaction.backfilled && <> · <StatusBadge variant="warn" className="cloud-account-history__status">回填</StatusBadge></>}</td>
                 <td><StatusBadge variant={dayStatusVariant(day?.status)} className="cloud-account-history__status">{dayStatusLabel(day?.status)}</StatusBadge>{day?.lastSettlementRevision ? ` · 曾關帳第 ${day.lastSettlementRevision} 版` : ''}</td>
                 <td>{eligible ? (

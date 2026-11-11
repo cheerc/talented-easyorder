@@ -42,3 +42,7 @@
 .cloud-account-balance__amount {
   font-variant-numeric: tabular-nums;
 }
+
+.cloud-account-balance__debt {
+  color: var(--warn);
+}

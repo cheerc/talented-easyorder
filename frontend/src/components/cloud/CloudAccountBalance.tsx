@@ -1,16 +1,11 @@
-import { StatusBadge } from '../ui/StatusBadge';
-import { formatAccountBalance, type BalanceCurrency } from './accountBalance';
+import '../ui/StatusBadge.css';
+import { DEBT_LABEL, formatAccountBalance } from './accountBalance';
 
-export function CloudAccountBalance({ amount, currency = 'NT$' }: {
-  amount: number;
-  currency?: BalanceCurrency;
-}) {
+export function CloudAccountBalance({ amount }: { amount: number }) {
   return (
     <span className="cloud-account-balance">
-      <span className="cloud-account-balance__amount">{formatAccountBalance(amount, currency)}</span>
-      {amount < 0 && (
-        <StatusBadge variant="warn" className="cloud-account-balance__debt">欠款</StatusBadge>
-      )}
+      <span className="cloud-account-balance__amount">{formatAccountBalance(amount)}</span>
+      {amount < 0 && <>{' '}<span className="cloud-account-balance__debt">{DEBT_LABEL}</span></>}
     </span>
   );
 }

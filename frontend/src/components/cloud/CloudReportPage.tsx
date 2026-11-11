@@ -33,6 +33,7 @@ import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
+import { formatAccountBalanceText } from './accountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import { HelpTip } from '../ui/HelpTip';
@@ -1053,7 +1054,7 @@ export function CloudReportPage({
                 <td><small>{transactionIds.join(' · ')}</small></td><td>{row.businessDate}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
                 <td>{merged ? row.kind : row.type} · <StatusBadge variant={transactionStatusVariant(row.status)} className="cloud-report__status">{transactionStatusLabel(row.status)}</StatusBadge></td><td>{mealText}</td>
                 <td className="dt-num">{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
-                <td className="dt-num">{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} currency="$" />}</td>
+                <td className="dt-num">{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} />}</td>
                 <td>{raw.map(item => <div key={item.transactionId}>{item.operatorEmail} · {taipeiTime(item.createdAt)}</div>)}</td>
                 <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{raw.map(item => item.note && <small key={`note:${item.transactionId}`}>{item.note}</small>)}</td>
               </tr>;
@@ -1127,7 +1128,7 @@ export function CloudReportPage({
             return <tr key={row.transactionId} data-merged-row={'kind' in row ? 'true' : undefined}>
               <td>{transactionIds.map((id, index) => <span key={id}>{index > 0 ? ' · ' : ''}{id}</span>)}</td>
               <td>{row.businessDate}</td><td>{row.studentId}</td><td>{row.studentNameSnapshot}</td>
-              <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : money(row.afterBalance)}</td>
+              <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : formatAccountBalanceText(row.afterBalance)}</td>
             </tr>;
           })}</tbody>
         </table>
