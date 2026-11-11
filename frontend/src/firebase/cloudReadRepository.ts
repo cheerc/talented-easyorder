@@ -31,8 +31,6 @@ import {
   isValidCloudGregorianDate,
   summarizeCloudReportDays,
   validateCloudLedgerRange,
-  type CloudAccessEventRow,
-  type CloudAccessEventsSnapshot,
   type CloudAccountHistory,
   type CloudAuditRow,
   type CloudAuditRangeRow,
@@ -51,7 +49,7 @@ import { isBackfilled, readCloudBackfillDay, readCloudDayClose, readCloudSettlem
 import { decodeCloudOrderTransaction, reconcileDayTotals } from './cloudOrderRepository';
 import { decodeCloudStudentRecord, listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
-import { accessEventPath, accessLeasePath, dataHeadPath, dayPath, studentPath } from './firestorePaths';
+import { accessLeasePath, dataHeadPath, dayPath, studentPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -64,7 +62,6 @@ const MAX_AUDIT_COMMANDS = 100_000;
 const MIN_FIRESTORE_TIMESTAMP = new Timestamp(-62_135_596_800, 0);
 const MAX_FIRESTORE_TIMESTAMP = new Timestamp(253_402_300_799, 999_999_999);
 const MAX_POST_CLOSE_ENTRIES_PER_DAY = 20_000;
-const MAX_ACCESS_EVENTS = 20_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type CloudReadErrorCode = CommandErrorCode
@@ -83,7 +80,7 @@ export class CloudReadRepositoryError extends Error {
 }
 
 export interface CloudReadPageEvent {
-  collection: 'transactions' | 'commands' | 'postCloseEntries' | 'accessEvents';
+  collection: 'transactions' | 'commands' | 'postCloseEntries';
   page: number;
   queryScope?: 'null-date-audit-range';
   committedAtRange?: { startInclusive: string; end: string; endInclusive: boolean };
@@ -92,8 +89,6 @@ export interface CloudReadPageEvent {
 export interface CloudReadRepositoryOptions {
   /** Test seam for bounded cursor paging; production reads 100 documents per page. */
   pageSize?: number;
-  /** Test seam for the bounded access-event read; production fails closed above 20,000 events. */
-  maxAccessEvents?: number;
   /** Emulator-only orchestration seam for proving that page reads fail on a moving head. */
   afterPageRead?: (event: CloudReadPageEvent) => Promise<void>;
   /** Injection seam for Emulator tests; production callers use Firebase Auth currentUser. */
@@ -147,7 +142,6 @@ const COLLECTION_LABEL: Record<CloudReadPageEvent['collection'], string> = {
   transactions: '交易紀錄',
   commands: '命令結果',
   postCloseEntries: '關帳後補記',
-  accessEvents: '使用權交接紀錄',
 };
 
 function assertServerConfirmed(snapshot: { metadata: { fromCache: boolean; hasPendingWrites: boolean } }, source: string): void {
@@ -214,7 +208,7 @@ function taipeiDate(timestamp: Timestamp): string {
 function decodeLease(value: unknown, uid: string): Omit<ReadContext, 'head'> {
   if (!exactKeys(value, ['holderUid', 'epoch', 'updatedAt']) || value.holderUid !== uid
     || !integer(value.epoch) || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudReadRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
+    throw new CloudReadRepositoryError('LEASE_LOST', '目前無法確認登入狀態，請重新登入後再試。');
   }
   return { holderUid: uid, leaseEpoch: value.epoch, leaseToday: taipeiDate(value.updatedAt) };
 }
@@ -232,7 +226,7 @@ function readFailure(error: unknown): CloudReadRepositoryError {
       .includes(code)) {
       return new CloudReadRepositoryError(code as CloudReadErrorCode, message || '無法完整讀取雲端報表');
     }
-    if (code.includes('permission-denied')) return new CloudReadRepositoryError('LEASE_LOST', '目前帳號沒有讀取報表的有效使用權');
+    if (code.includes('permission-denied')) return new CloudReadRepositoryError('LEASE_LOST', '目前無法讀取報表：可能有其他人已登入，或登入已失效。請重新登入後再試。');
     if (code.includes('unauthenticated')) return new CloudReadRepositoryError('UNAUTHORIZED', '請重新登入 Google 操作員帳號');
     if (code.includes('resource-exhausted')) return new CloudReadRepositoryError('QUOTA_EXCEEDED', '目前讀取次數已達服務限制');
     if (code.includes('unavailable') || code.includes('deadline-exceeded') || code.includes('cancelled')) {
@@ -243,7 +237,7 @@ function readFailure(error: unknown): CloudReadRepositoryError {
 }
 
 function validateEpoch(epoch: unknown): asserts epoch is number {
-  if (!integer(epoch)) throw new CloudReadRepositoryError('INVALID_INPUT', '使用權租約版本不正確');
+  if (!integer(epoch)) throw new CloudReadRepositoryError('INVALID_INPUT', '登入狀態資訊不正確，請重新登入後再試。');
 }
 
 function validateStudentId(studentId: unknown): asserts studentId is string {
@@ -264,7 +258,7 @@ function validateRange(range: CloudLedgerDateRange): CloudLedgerDateRange {
 
 function validateSnapshotScope(context: ReadContext, expectedLeaseEpoch: number): void {
   if (context.leaseEpoch !== expectedLeaseEpoch) {
-    throw new CloudReadRepositoryError('LEASE_LOST', '使用權租約已切換，請重新確認後再讀取報表');
+    throw new CloudReadRepositoryError('LEASE_LOST', '其他人已登入，這個頁面已停止操作。請重新登入後再讀取報表。');
   }
 }
 
@@ -274,9 +268,9 @@ async function readContext(db: Firestore, user: CurrentUser): Promise<ReadContex
     getDocFromServer(doc(db, accessLeasePath())),
   ]);
   assertServerConfirmed(headSnapshot, '營業資料狀態');
-  assertServerConfirmed(leaseSnapshot, '使用權狀態');
+  assertServerConfirmed(leaseSnapshot, '登入狀態');
   if (!headSnapshot.exists()) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
-  if (!leaseSnapshot.exists()) throw new CloudReadRepositoryError('LEASE_LOST', '使用權租約不存在');
+  if (!leaseSnapshot.exists()) throw new CloudReadRepositoryError('LEASE_LOST', '找不到登入狀態，請重新登入後再試。');
   return {
     head: decodeHead(headSnapshot.data()),
     ...decodeLease(leaseSnapshot.data(), user.uid),
@@ -295,7 +289,7 @@ function sameContext(left: ReadContext, right: ReadContext): boolean {
 async function assertContextUnchanged(db: Firestore, user: CurrentUser, before: ReadContext): Promise<void> {
   const after = await readContext(db, user);
   if (!sameContext(before, after)) {
-    throw new CloudReadRepositoryError('STALE_SNAPSHOT', '讀取期間資料已被其他操作更新或使用權已切換，請重新載入');
+    throw new CloudReadRepositoryError('STALE_SNAPSHOT', '讀取期間資料已被其他操作更新，或其他人已登入。請重新載入。');
   }
 }
 
@@ -403,46 +397,6 @@ function taipeiAuditTimestampRange(range: CloudLedgerDateRange): {
   return { start, end: Timestamp.fromMillis(endMs), inclusiveEnd: false };
 }
 
-interface DecodedAccessEvent {
-  epoch: number;
-  kind: CloudAccessEventRow['kind'];
-  holderUid: string | null;
-  previousHolderUid: string | null;
-  actorUid: string;
-  actorEmail: string;
-  at: Timestamp;
-}
-
-function decodeAccessEvent(snapshot: { id: string; data: () => unknown }): DecodedAccessEvent {
-  const value = snapshot.data();
-  const uid = (candidate: unknown): candidate is string => typeof candidate === 'string' && candidate.length > 0;
-  const nullableUid = (candidate: unknown): candidate is string | null => candidate === null || uid(candidate);
-  const epoch = /^[1-9][0-9]*$/.test(snapshot.id) ? Number(snapshot.id) : 0;
-  if (!Number.isSafeInteger(epoch) || epoch < 1
-    || !exactKeys(value, ['kind', 'holderUid', 'previousHolderUid', 'actorUid', 'actorEmail', 'at'])
-    || (value.kind !== 'acquire' && value.kind !== 'takeover' && value.kind !== 'release')
-    || !nullableUid(value.holderUid) || !nullableUid(value.previousHolderUid)
-    || !uid(value.actorUid) || !uid(value.actorEmail) || !(value.at instanceof Timestamp)) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄格式異常，請停止操作並聯絡維護者');
-  }
-  const kindMatches = value.kind === 'release'
-    ? value.holderUid === null && value.previousHolderUid !== null
-    : value.kind === 'acquire'
-      ? value.holderUid !== null && value.previousHolderUid === null
-      : value.holderUid !== null && value.previousHolderUid !== null;
-  if (!kindMatches) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄的種類與前後持有人對不上，請停止操作並聯絡維護者');
-  }
-  return {
-    epoch,
-    kind: value.kind,
-    holderUid: value.holderUid,
-    previousHolderUid: value.previousHolderUid,
-    actorUid: value.actorUid,
-    actorEmail: value.actorEmail,
-    at: value.at,
-  };
-}
 
 function decodeAuditCommand(snapshot: QueryDocumentSnapshot, headSeq: number): CloudAuditRow {
   let command: StoredEnabledCommandDoc;
@@ -1212,89 +1166,5 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
     }
   }
 
-  async function readAccessEvents(input: CloudSummaryInput): Promise<CloudAccessEventsSnapshot> {
-    try {
-      validateEpoch(input.leaseEpoch);
-      const user = requireGoogleUser(options);
-      const context = await readContext(db, user);
-      validateSnapshotScope(context, input.leaseEpoch);
-      const range = validateRange(input.range);
-      const timestamps = taipeiAuditTimestampRange(range);
-      const maxEvents = options.maxAccessEvents ?? MAX_ACCESS_EVENTS;
-      const queryBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-        collection(db, 'accessEvents'),
-        where('at', '>=', timestamps.start),
-        ...(timestamps.inclusiveEnd ? [where('at', '<=', timestamps.end)] : [where('at', '<', timestamps.end)]),
-        orderBy('at'),
-        orderBy(documentId()),
-        ...(cursor ? [startAfter(cursor)] : []),
-        limit(pageLimit),
-      );
-      const paged = await readPaged(
-        db, queryBase, context, user, pageSize, maxEvents, 'accessEvents', options.afterPageRead,
-      );
-      const events = paged.documents
-        .map(decodeAccessEvent)
-        .sort((left, right) => left.epoch - right.epoch);
-      // A lease that moved on is a stale read, not a malformed event: settle that before judging the epochs.
-      await assertContextUnchanged(db, user, context);
-      if (events.some(event => event.epoch > context.leaseEpoch)) {
-        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄超過目前租約世代');
-      }
-
-      const known = new Map(events.map(event => [event.epoch, event]));
-      const predecessorOf = async (epoch: number): Promise<DecodedAccessEvent | null> => {
-        if (epoch < 2) return null;
-        const inRange = known.get(epoch - 1);
-        if (inRange) return inRange;
-        const snapshot = await getDocFromServer(doc(db, accessEventPath(epoch - 1)));
-        assertServerConfirmed(snapshot, COLLECTION_LABEL.accessEvents);
-        if (!snapshot.exists()) return null;
-        const decoded = decodeAccessEvent(snapshot);
-        known.set(decoded.epoch, decoded);
-        return decoded;
-      };
-
-      const rows: CloudAccessEventRow[] = [];
-      for (const event of events) {
-        let previousHolderState: CloudAccessEventRow['previousHolderState'] = 'none';
-        let previousHolderEmail: string | null = null;
-        if (event.previousHolderUid !== null) {
-          const predecessor = await predecessorOf(event.epoch);
-          // The previous holder's own event names them as actor; anything else is not proof of their email.
-          if (predecessor && predecessor.holderUid === event.previousHolderUid
-            && predecessor.actorUid === event.previousHolderUid) {
-            previousHolderState = 'known';
-            previousHolderEmail = predecessor.actorEmail;
-          } else {
-            previousHolderState = 'unrecorded';
-          }
-        }
-        rows.push({
-          epoch: event.epoch,
-          kind: event.kind,
-          at: event.at.toDate().toISOString(),
-          actorEmail: event.actorEmail,
-          previousHolderState,
-          previousHolderEmail,
-        });
-      }
-
-      await assertContextUnchanged(db, user, context);
-      return {
-        datasetId: context.head.datasetId,
-        sourceSeq: context.head.sourceSeq,
-        goLiveDate: context.head.goLiveDate,
-        leaseToday: context.leaseToday,
-        leaseEpoch: context.leaseEpoch,
-        range,
-        complete: true,
-        rows,
-      };
-    } catch (error) {
-      throw readFailure(error);
-    }
-  }
-
-  return { readSummary, readReport, readAccountHistory, readAudit, readAuditRange, readAccessEvents };
+  return { readSummary, readReport, readAccountHistory, readAudit, readAuditRange };
 }

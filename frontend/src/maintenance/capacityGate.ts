@@ -181,7 +181,6 @@ function loadLines(a: Assumptions): WorkloadLine[] {
       studentTransaction: Math.max(0, accounts * studentTransactions - rangeTransactions),
     };
   };
-  const accessEventsPerDay = a.leaseEvents;
 
   load('load.orders', 6, { student: a.roster, dayTransaction: shape.transactionsOnPage, openDay: a.unclosedDays });
   load('load.ordersRefresh', shape.pageCommands);
@@ -204,7 +203,6 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   // the closed days of the ranges that a report reads (today's is open): their versions, post-close entries and back-fill markers
   // (a day without a document costs less and is counted as closed: conservative)
   const reportClosedDays = reportQueries.reduce((sum, [days, perDay]) => sum + perDay * (days - 1), 0);
-  load('load.accessEvents', reportQueries.reduce((sum, [, perDay]) => sum + perDay, 0), { accessEvent: accessEventsPerDay * 7 });
   // CSV and print: the report on the screen is reused, the audit of the range (today's) is read when asked for
   load('load.auditRange', 2, { student: a.roster, vendor: a.vendors, dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
 

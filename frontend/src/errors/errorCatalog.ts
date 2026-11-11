@@ -76,8 +76,8 @@ export function getUserErrorMessage(code: AppErrorCode): UserErrorMessage {
 }
 
 const commandDiagnosticNextSteps: Record<CommandErrorCode, string> = {
-  ACCESS_BUSY: '目前有人持有使用權；請等待操作員交接後再確認，不要重送命令。',
-  LEASE_LOST: '使用權可能已變更；先用原命令編號查詢伺服器結果，重新確認使用權後再處理。',
+  ACCESS_BUSY: '目前有人正在使用；請稍後再試，或在登入畫面確認後讓對方登出。不要重送命令。',
+  LEASE_LOST: '其他人可能已登入；先用原命令編號查詢伺服器結果，重新登入後再處理。',
   UNAUTHORIZED: '請聯絡維護者確認帳號權限；保留原命令編號並先查詢結果。',
   OFFLINE: '網路恢復後用原命令編號查詢；不要建立新的命令，也不會背景補送。',
   UNKNOWN_RESULT: '結果尚未確認；不要重新收款或建立新命令。請保留原命令編號，先用該命令編號查詢伺服器結果。',
@@ -105,9 +105,9 @@ export function getSystemDiagnosticNextStep(code: unknown): string {
       return '本機診斷可能無法保存；不要因此重送業務命令，請先確認原命令編號的伺服器結果。';
     case 'SYNC_ERROR':
     case 'FIREBASE_ERROR':
-      return '確認連線與使用權；若涉及送出，先用原命令編號查詢結果，不要建立新命令。';
+      return '確認連線與登入狀態；若涉及送出，先用原命令編號查詢結果，不要建立新命令。';
     case 'AUTH_ERROR':
-      return '重新確認登入與使用權；如有送出中的命令，先查原命令編號。';
+      return '重新登入；如有送出中的命令，先查原命令編號。';
     case 'SETTLEMENT_ERROR':
       return '重新載入日結狀態；如有送出中的命令，先查原命令編號，不要另建命令。';
     default:

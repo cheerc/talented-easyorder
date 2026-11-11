@@ -72,7 +72,7 @@ vi.mock('../components/cloud/CloudStudentsPage', () => ({
       <form><label>測試草稿<input /></label></form>
       <button type="button" onClick={onDraftCleared}>確認草稿已清除</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'recovering')}>保持待確認命令</button>
-      <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報使用權失效</button>
+      <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報登入失效</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>回報已確認</button>
     </section>
   ); },
@@ -90,7 +90,7 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
     <section aria-label="mock day vendors page">
       <input aria-label="日期選擇" defaultValue="2026-10-28" />
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'recovering')}>保持待確認命令</button>
-      <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報使用權失效</button>
+      <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報登入失效</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>回報已確認</button>
     </section>
   ); },
@@ -133,7 +133,7 @@ describe('App mode gate', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(appMocks.firebase.fbError);
     expect(screen.getByRole('button', { name: '重新載入' })).toBeVisible();
     expect(screen.queryByRole('tab')).toBeNull();
-    expect(screen.queryByRole('button', { name: '取得系統使用權' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '開始使用' })).toBeNull();
   });
 
   it('blocks the cloud app when app-scoped local storage cleanup is incomplete', () => {
@@ -143,7 +143,7 @@ describe('App mode gate', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(appMocks.firebase.storageCleanupError);
     expect(screen.queryByRole('tab')).toBeNull();
-    expect(screen.queryByRole('button', { name: '取得系統使用權' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '開始使用' })).toBeNull();
   });
 
   it('does not read or write the legacy POS crash draft from the cloud entrypoint', () => {
@@ -207,6 +207,16 @@ describe('App mode gate', () => {
     expect(panel?.textContent).not.toContain('租約');
   });
 
+  it('操作員選單的登出鍵只叫「登出」，選單不出現使用權用語（#691 P8）', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+
+    const panel = document.querySelector('.operator-menu__panel') as HTMLElement;
+    const signOut = Array.from(panel.querySelectorAll('button')).find(button => button.textContent === '登出');
+    expect(signOut).toBeDefined();
+    expect(panel.textContent).not.toMatch(/使用權|租約|Epoch|世代/);
+  });
+
   it('opens today settings from the counter page without leaving the cloud shell', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
@@ -224,7 +234,7 @@ describe('App mode gate', () => {
     const studentsTab = screen.getByRole('button', { name: '學生' });
     const dayVendorsTab = screen.getByRole('button', { name: '菜單與開帳' });
 
-    fireEvent.click(screen.getByRole('button', { name: '回報使用權失效' }));
+    fireEvent.click(screen.getByRole('button', { name: '回報登入失效' }));
     expect(dayVendorsTab).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
     expect(dayVendorsTab).toBeDisabled();
@@ -238,7 +248,7 @@ describe('App mode gate', () => {
 
     expect(screen.getByRole('button', { name: '學生' })).toBeEnabled();
 
-    fireEvent.click(screen.getByRole('button', { name: '回報使用權失效' }));
+    fireEvent.click(screen.getByRole('button', { name: '回報登入失效' }));
     expect(dayVendorsTab).toBeDisabled();
     appMocks.firebase.access = { ok: true, profile: { uid: 'uid-b', email: 'b@example.test' } };
     view.rerender(<App />);

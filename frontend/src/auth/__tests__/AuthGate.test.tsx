@@ -85,7 +85,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
 
-  it('not_whitelisted 時顯示尚未取得使用權畫面，包含 UID 且不渲染業務內容', () => {
+  it('not_whitelisted 時顯示尚未獲准使用畫面，包含 UID 且不渲染業務內容', () => {
     const access: OperatorAccess = {
       ok: false,
       reason: 'not_whitelisted',
@@ -101,7 +101,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       </AuthGate>,
     );
 
-    expect(screen.getByText('尚未取得使用權')).toBeTruthy();
+    expect(screen.getByText('尚未獲准使用')).toBeTruthy();
     expect(screen.getByText('test@example.com')).toBeTruthy();
     expect(screen.getByText('uid-test-user')).toBeTruthy();
     expect(screen.getByText('登出 / 切換帳號')).toBeTruthy();
@@ -294,19 +294,19 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     );
 
     // 第一次點擊：可執行
-    fireEvent.click(screen.getByText('重新確認使用權'));
+    fireEvent.click(screen.getByText('重新確認'));
     expect(mockAcquire).toHaveBeenCalledTimes(1);
 
     // 等候第一次非同步檢查完成，按鈕恢復非 disabled
-    await waitFor(() => expect(screen.getByText('重新確認使用權')).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByText('重新確認')).not.toBeDisabled());
 
     // 15 秒內再次點擊：觸發限流
-    fireEvent.click(screen.getByText('重新確認使用權'));
+    fireEvent.click(screen.getByText('重新確認'));
     expect(mockAcquire).toHaveBeenCalledTimes(1); // 未再增加呼叫
     expect(screen.getByText(/檢查過於頻繁/)).toBeTruthy();
   });
 
-  it('P04: 白名單通過且租約閒置時，顯示待取得使用權按鈕', () => {
+  it('P04: 白名單通過且無人使用時，顯示開始使用按鈕，且畫面不出現工程用語', () => {
     const access: OperatorAccess = {
       ok: true,
       profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
@@ -326,12 +326,13 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       </AuthGate>,
     );
 
-    expect(screen.getByText('待取得使用權')).toBeTruthy();
-    expect(screen.getByText('取得系統使用權')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '開始使用' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toMatch(/使用權|租約|Epoch|世代|伺服器|權威時間/);
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
 
-  it('P04: 核准且持有租約（isHolder: true）進入系統，顯示操作員條與業務畫面', () => {
+  it('P04: 核准且持有登入（isHolder: true）進入系統，顯示操作員條與業務畫面', () => {
     const access: OperatorAccess = {
       ok: true,
       profile: { uid: 'uid-me', email: 'me@example.com', displayName: '操作員 1' },
@@ -352,8 +353,9 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     );
 
     expect(screen.getByText('操作員 1')).toBeTruthy();
-    expect(screen.getByText('[租約 Epoch: 3]')).toBeTruthy();
-    expect(screen.getByText('釋放使用權並登出')).toBeTruthy();
+    // #691 P8: the operator strip shows the name and 「登出」 only, never an epoch.
+    expect(document.body.textContent).not.toMatch(/Epoch|租約|使用權|世代/);
+    expect(screen.getByRole('button', { name: '登出' })).toBeTruthy();
     expect(screen.getByTestId('business-content')).toBeTruthy();
   });
 
@@ -378,7 +380,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
 
     expect(acquire).not.toHaveBeenCalled();
     expect(screen.queryByTestId('business-content')).toBeNull();
-    fireEvent.click(screen.getByText('取得系統使用權'));
+    fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
     expect(acquire).toHaveBeenCalledOnce();
   });
 
@@ -399,7 +401,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       </AuthGate>,
     );
 
-    fireEvent.click(screen.getByText('取得系統使用權'));
+    fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
     expect(await screen.findByText('offline test failure')).toBeTruthy();
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
@@ -423,10 +425,10 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       </AuthGate>,
     );
 
-    expect(screen.getByText('正在確認此分頁的使用權')).toBeTruthy();
+    expect(screen.getByText('正在確認此分頁的登入')).toBeTruthy();
     expect(screen.queryByTestId('business-content')).toBeNull();
     expect(acquire).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('重新確認使用權'));
+    fireEvent.click(screen.getByText('重新確認'));
     expect(acquire).toHaveBeenCalledOnce();
   });
 
@@ -461,7 +463,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={looksExpired} onAcquireLease={acquire}><span>x</span></AuthGate>);
 
     expect(await screen.findByText(/other@example\.com/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '取得系統使用權' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '開始使用' })).toBeNull();
     expect(screen.getByRole('main')).toHaveTextContent('可能已閒置');
     expect(screen.getByRole('main').textContent).not.toContain('uid-other-operator');
     expect(acquire).not.toHaveBeenCalled();
@@ -479,7 +481,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       holderUid: null, epoch: 0, updatedAt: null, isKnown: true, isHolder: false, isExpired: true,
     };
     render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={vacant}><span>x</span></AuthGate>);
-    expect(screen.getByRole('button', { name: '取得系統使用權' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '開始使用' })).toBeTruthy();
     expect(screen.getByRole('main').textContent).not.toMatch(/權威時間|伺服器會依|逾期/);
   });
 
@@ -524,5 +526,43 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     view.rerender(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={lease(4, 'uid-other')}><span>x</span></AuthGate>);
     await screen.findByText(/other@example\.com/);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('#691 P8: the checking, unknown-state and same-account screens say what is happening without lease wording', () => {
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const unknown: ActiveLeaseState = {
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false, error: '尚未確認登入狀態',
+    };
+    const first = render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={unknown}><span>x</span></AuthGate>);
+    expect(screen.getByRole('heading', { name: '正在連線…' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新確認' })).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toMatch(/使用權|租約|Epoch|世代|持有|權威時間/);
+    first.unmount();
+
+    const sameUid: ActiveLeaseState = {
+      holderUid: 'uid-me', epoch: 4, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    };
+    render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={sameUid}><span>x</span></AuthGate>);
+    expect(screen.getByRole('heading', { name: '正在確認此分頁的登入' })).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toMatch(/使用權|租約|Epoch|世代|持有|權威時間/);
+  });
+
+  it('#691 P8: a rejected account is told it is not approved, apart from the occupied screen', () => {
+    const access: OperatorAccess = {
+      ok: false, reason: 'not_whitelisted', profile: { uid: 'uid-new', email: 'new@example.com', displayName: '新人' },
+    };
+    render(<AuthGate auth={mockAuth} db={mockDb} access={access}><span>x</span></AuthGate>);
+    expect(screen.getByRole('heading', { name: '尚未獲准使用' })).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toMatch(/使用權/);
+  });
+
+  it('#691 P8: errors after a failed start say what happened and what to do, without lease wording', async () => {
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const vacant: ActiveLeaseState = { holderUid: null, epoch: 0, updatedAt: null, isKnown: true, isHolder: false, isExpired: true };
+    const acquire = vi.fn().mockResolvedValue({ status: 'stale_epoch', expectedEpoch: 0, actualEpoch: 1 });
+    render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={vacant} onAcquireLease={acquire}><span>x</span></AuthGate>);
+    fireEvent.click(screen.getByRole('button', { name: '開始使用' }));
+    const message = await screen.findByText('畫面資訊已過期，請再試一次。');
+    expect(message.textContent).not.toMatch(/租約|使用權|Epoch|世代/);
   });
 });

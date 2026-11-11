@@ -132,8 +132,8 @@ export function AuthGate({
         )}
 
         {access.reason === 'not_whitelisted' && (
-          <div className="auth-gate-pending" aria-label="尚未取得使用權">
-            <h2>尚未取得使用權</h2>
+          <div className="auth-gate-pending" aria-label="尚未獲准使用">
+            <h2>尚未獲准使用</h2>
             <p>您的 Google 帳號尚未加入操作員白名單，無法存取系統業務資料。</p>
             {access.profile && (
               <div
@@ -210,17 +210,17 @@ export function AuthGate({
     setIsAcquiring(true);
     setBusyError('');
     try {
-      if (!doAcquire) throw new Error('租約服務尚未就緒，請重新連線後再試');
+      if (!doAcquire) throw new Error('尚未準備好，請重新連線後再試。');
       const result = await (options ? doAcquire(options) : doAcquire());
       if (result.status === 'busy') {
         setBusyError('對方仍在使用中，請稍後再試。');
       } else if (result.status === 'stale_epoch') {
-        setBusyError('租約狀態已更新，請重新檢查後再試');
+        setBusyError('畫面資訊已過期，請再試一次。');
       } else if (result.status === 'lost') {
         setBusyError(result.message);
       }
     } catch (error) {
-      setBusyError(error instanceof Error ? error.message : '目前無法連線確認使用權，請稍後重試');
+      setBusyError(error instanceof Error ? error.message : '目前無法連線，請稍後再試。');
     } finally {
       setIsAcquiring(false);
     }
@@ -243,16 +243,16 @@ export function AuthGate({
   // Unknown/cache-only lease data never opens the business UI or appears idle.
   if (!activeLease?.isKnown) {
     return (
-      <main className="auth-gate" aria-label="EasyOrder 使用權租約">
+      <main className="auth-gate" aria-label="EasyOrder 登入狀態">
         <h1>Talented EasyOrder</h1>
         <div className="auth-gate-checking" role="status">
-          <h2>正在確認系統使用權</h2>
-          <p>{activeLease?.error ?? '尚未從伺服器確認租約狀態。'}</p>
+          <h2>正在連線…</h2>
+          <p>{activeLease?.error ?? '尚未確認登入狀態。'}</p>
         </div>
         {busyError && <div role="alert">{busyError}</div>}
         {throttleMessage && <div>{throttleMessage}</div>}
         <button type="button" onClick={() => void handleRecheck()} disabled={isAcquiring}>
-          {isAcquiring ? '檢查中...' : '重新確認使用權'}
+          {isAcquiring ? '檢查中...' : '重新確認'}
         </button>
         <button type="button" onClick={() => void signOutOperator(auth)}>登出</button>
       </main>
@@ -288,17 +288,17 @@ export function AuthGate({
     const occupantName = knownOccupant ?? '其他人';
 
     return (
-      <main className="auth-gate" aria-label="EasyOrder 使用權租約">
+      <main className="auth-gate" aria-label="EasyOrder 登入狀態">
         <h1>Talented EasyOrder</h1>
 
         {isSameUidUnconfirmed ? (
-          <div className="auth-gate-checking" aria-label="正在確認目前帳號使用權">
-            <h2>正在確認此分頁的使用權</h2>
-            <p>伺服器觀察到此帳號先前持有租約；確認成功前不會開放業務資料。</p>
+          <div className="auth-gate-checking" aria-label="正在確認此帳號的登入">
+            <h2>正在確認此分頁的登入</h2>
+            <p>此帳號先前已登入；確認完成前不會顯示資料。</p>
             {busyError && <div role="alert">{busyError}</div>}
             {throttleMessage && <div>{throttleMessage}</div>}
             <button type="button" onClick={() => void handleRecheck()} disabled={isAcquiring}>
-              {isAcquiring ? '檢查中...' : '重新確認使用權'}
+              {isAcquiring ? '檢查中...' : '重新確認'}
             </button>
             <button type="button" onClick={() => void signOutOperator(auth)}>登出</button>
           </div>
@@ -335,13 +335,13 @@ export function AuthGate({
             />
           </div>
         ) : (
-          <div className="auth-gate-acquire" aria-label="待取得使用權">
-            <h2>待取得使用權</h2>
+          <div className="auth-gate-acquire" aria-label="開始使用">
+            <h2>開始使用</h2>
             <p>目前沒有人使用。按下按鈕即可開始使用。</p>
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <button type="button" className="auth-gate-primary" onClick={() => void attemptAcquire()} disabled={isAcquiring}>
-                {isAcquiring ? '取得中...' : '取得系統使用權'}
+                {isAcquiring ? '進入中...' : '開始使用'}
               </button>
               <button type="button" onClick={() => void signOutOperator(auth)}>
                 登出
@@ -365,13 +365,8 @@ export function AuthGate({
     <OperatorContext.Provider value={{ name: access.profile.displayName, epoch: activeLease.epoch, signOut: () => void handleSignOutWithRelease() }}>
       {showOperatorStrip && <div className="operator-strip">
         <span>{access.profile.displayName}</span>
-        {activeLease?.epoch !== undefined && (
-          <span className="mono" style={{ fontSize: '11px', color: 'var(--text-dim, #888)', marginLeft: '8px' }}>
-            [租約 Epoch: {activeLease.epoch}]
-          </span>
-        )}
         <button type="button" onClick={() => void handleSignOutWithRelease()}>
-          釋放使用權並登出
+          登出
         </button>
       </div>}
       {children}

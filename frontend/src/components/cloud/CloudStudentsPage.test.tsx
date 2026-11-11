@@ -354,7 +354,7 @@ describe('CloudStudentsPage', () => {
     await screen.findByText('結果確認中，請勿重複建立／修改。');
 
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
+    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
     expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
     expect(screen.queryByText('查詢原命令結果')).not.toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
@@ -582,7 +582,7 @@ describe('CloudStudentsPage', () => {
       <CloudStudentsPage db={db} leaseEpoch={4} identityKey="uid-a:4" onNavigationStateChange={reportNavigationState} />,
     );
 
-    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
     view.rerender(
       <CloudStudentsPage
@@ -618,7 +618,7 @@ describe('CloudStudentsPage', () => {
     expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
 
     await act(async () => rejectReceiptRead({ code: 'UNAUTHORIZED', message: 'token revoked' }));
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
+    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
 
     expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
@@ -933,7 +933,7 @@ describe('CloudStudentsPage', () => {
       expect(screen.getByText('既有學生')).toBeInTheDocument();
 
       await act(async () => failRead());
-      expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+      expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
       expect(screen.queryByText('既有學生')).not.toBeInTheDocument();
       expect(screen.queryByTestId('cloud-students-content')).not.toBeInTheDocument();
     });
@@ -1021,7 +1021,7 @@ describe('CloudStudentsPage', () => {
     it('keeps the revoked-authorization notice visible as a warn Callout', async () => {
       repository.list.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
       renderPage();
-      const text = await screen.findByText(/授權狀態已失效/);
+      const text = await screen.findByText(/登入狀態已失效/);
       expect(text.closest('.callout-warn')).not.toBeNull();
     });
 

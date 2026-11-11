@@ -11,7 +11,7 @@ export async function report(page: Page) {
 export async function release(page: Page) {
   const menu = page.locator('.operator-menu');
   if (!await menu.evaluate(element => (element as HTMLDetailsElement).open)) await menu.locator('summary').click();
-  await menu.getByRole('button', { name: '釋放使用權並登出' }).click();
+  await menu.getByRole('button', { name: '登出' }).click();
 }
 
 export async function releaseOwner(button: import('@playwright/test').Locator) {

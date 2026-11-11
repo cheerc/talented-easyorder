@@ -101,7 +101,7 @@ export function formatValidateSummary(report: ValidateReport): string {
   const c = report.collections;
   return [
     `驗證通過：資料集 ${report.datasetId}，重播到 seq ${report.toSeq}（共 ${report.chain.packageCount} 個備份包，最後 seq ${report.chain.lastSeq}）`,
-    `命令 ${c.commands}、營業日 ${c.days}、日結版本 ${c.settlements}、學生 ${c.students}（餘額總和 ${report.students.balanceSum}）、供應商 ${c.vendors}、交易 ${c.transactions}、回填標記 ${c.backfillDays}、關帳後收支 ${c.postCloseEntries}`,
+    `命令 ${c.commands}、營業日 ${c.days}、日結版本 ${c.settlements}、學生 ${c.students}（餘額總和 ${report.students.balanceSum}）、供應商 ${c.vendors}、交易 ${c.transactions}、補登標記 ${c.backfillDays}、關帳後收支 ${c.postCloseEntries}`,
     `預估還原寫入 ${report.writes.documents} 次，以每日 ${report.writes.maxWritesPerDay} 次計約 ${report.writes.estimatedDays} 天`,
     `耗時：解密 ${report.timing.decryptMs} ms、重播 ${report.timing.replayMs} ms、合計 ${report.timing.totalMs} ms`,
     '',

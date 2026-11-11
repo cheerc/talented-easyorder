@@ -2,20 +2,6 @@
   "schemaVersion": 1,
   "shapes": [
     {
-      "collection": "accessEvents",
-      "where": [
-        "at >=",
-        "at <"
-      ],
-      "orderBy": [
-        "at asc",
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.accessEvents"
-      ]
-    },
-    {
       "collection": "backfillDays",
       "where": [
         "__name__ in[19]"

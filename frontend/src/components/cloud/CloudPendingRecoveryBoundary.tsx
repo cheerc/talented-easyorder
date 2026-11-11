@@ -554,7 +554,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       {!quietSameTab && !(scopeConfirmed && state.initialReady && state.online && !state.busy && state.error === null && scopedRows.length === 0) && <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
         <h2>待核對命令</h2>
         {!state.online && <p role="status">目前離線；追蹤編號仍保留，恢復連線後會重新核對。</p>}
-        {!scopeMatchesOwner && <p role="status">目前登入身分或使用權已變更，正在重新核對；完成前不開放操作。</p>}
+        {!scopeMatchesOwner && <p role="status">目前登入身分已變更，正在重新核對；完成前不開放操作。</p>}
         {!state.initialReady && state.busy && <p role="status">正在檢查本機追蹤編號及伺服器回執；完成前不開放新操作。</p>}
         {scopeMatchesOwner && state.error === 'journal' && (
           <div role="alert">
@@ -564,7 +564,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         {scopeMatchesOwner && state.error === 'query' && (
           <div role="alert">
             <p>{state.errorCode === 'LEASE_LOST' || state.errorCode === 'UNAUTHORIZED'
-              ? '登入身分或使用權已變更，待核對結果仍保留。請重新確認使用權後再查。'
+              ? '登入身分已變更，待核對結果仍保留。請重新登入後再查。'
               : '目前無法從伺服器安全核對待決命令；結果未確認，請確認連線後重試。'}</p>
           </div>
         )}

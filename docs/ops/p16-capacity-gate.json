@@ -25,8 +25,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 37683,
-      "deduped": 35323,
+      "conservative": 37254,
+      "deduped": 34894,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -127,8 +127,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 24084,
-      "deduped": 22912,
+      "conservative": 23654,
+      "deduped": 22482,
       "limit": 25000,
       "verdict": "PASS",
       "passedBy": "conservative"
@@ -229,8 +229,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 22082,
-      "deduped": 20909,
+      "conservative": 21652,
+      "deduped": 20480,
       "limit": 25000,
       "verdict": "PASS",
       "passedBy": "conservative"
@@ -331,8 +331,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 43775,
-      "deduped": 41415,
+      "conservative": 43346,
+      "deduped": 40986,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -433,8 +433,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 42399,
-      "deduped": 40387,
+      "conservative": 41970,
+      "deduped": 39958,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -522,15 +522,15 @@
   "whatIf": [
     {
       "label": "the design ceiling as measured",
-      "reads": 37683
+      "reads": 37254
     },
     {
       "label": "the orders page reloads fully after every command, as before P16f2 S4",
-      "reads": 99879
+      "reads": 99450
     },
     {
       "label": "the history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)",
-      "reads": 34843
+      "reads": 34414
     }
   ],
   "floor": {

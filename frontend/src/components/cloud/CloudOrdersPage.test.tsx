@@ -673,7 +673,7 @@ describe('CloudOrdersPage', () => {
       expect(document.getElementById('cloud-student-search')).not.toBeNull();
 
       await act(async () => { refresh.resolve(null); });
-      expect(await screen.findByText(/目前使用權已變更，訂餐資料已清除/)).toBeVisible();
+      expect(await screen.findByText(/其他人已登入或登入已失效，訂餐資料已清除/)).toBeVisible();
       expect(document.getElementById('cloud-student-search')).toBeNull();
       expect(document.querySelector('.cloud-orders__content')).toBeNull();
       expect(screen.queryByTestId('toast')).toBeNull();
@@ -930,7 +930,7 @@ describe('CloudOrdersPage', () => {
     await screen.findByTestId('order-recovery-panel');
     fireEvent.click(await screen.findByTestId('order-recovery-query'));
 
-    expect(await screen.findByText(/目前使用權已變更，訂餐資料已清除/)).toBeVisible();
+    expect(await screen.findByText(/其他人已登入或登入已失效，訂餐資料已清除/)).toBeVisible();
     expect(screen.queryByTestId('selected-student-card')).toBeNull();
     expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
     expect(repositoryMock.getPendingRecoveryContext).toHaveBeenCalledWith(1);
@@ -995,7 +995,7 @@ describe('CloudOrdersPage', () => {
     fireEvent.click(screen.getByTestId('submit-order-button'));
     fireEvent.click(await screen.findByTestId('confirm-duplicate-button'));
 
-    expect(await screen.findByText(/目前使用權已變更，訂餐資料已清除/)).toBeVisible();
+    expect(await screen.findByText(/其他人已登入或登入已失效，訂餐資料已清除/)).toBeVisible();
     expect(screen.queryByTestId('selected-student-card')).toBeNull();
     expect(screen.queryByTestId('recent-accounts-card')).toBeNull();
     expect(screen.queryByTestId('cloud-topbar-counts')).toBeNull();
@@ -1024,7 +1024,7 @@ describe('CloudOrdersPage', () => {
   it('masks data when the initial server read is denied (B2)', async () => {
     repositoryMock.loadSnapshot.mockRejectedValue(Object.assign(new Error('denied'), { code: 'LEASE_LOST' }));
     renderComponent();
-    expect(await screen.findByText(/目前使用權已變更/)).toBeVisible();
+    expect(await screen.findByText(/其他人已登入或登入已失效/)).toBeVisible();
     expect(screen.queryByLabelText('搜尋編號、姓名或別名')).toBeNull();
     expect(screen.queryByRole('button', { name: '重新載入' })).toBeNull();
   });

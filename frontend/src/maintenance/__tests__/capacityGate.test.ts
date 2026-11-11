@@ -108,8 +108,8 @@ describe('P16f2 S9: the usage the workload states', () => {
       expect(reports.map(line => line.perDay)).toEqual([6, 1, 0.2]);
       expect(perDay(assumptions, 'load.auditRange')).toBe(2);
       expect(perDay(assumptions, 'load.auditDay')).toBe(3);
-      // an access-events read goes with each report
-      expect(perDay(assumptions, 'load.accessEvents')).toBeCloseTo(7.2, 9);
+      // #691 P8: the report page no longer reads access events (they are still written by every lease change)
+      expect(workloadOf(assumptions).some(line => line.operation === 'load.accessEvents')).toBe(false);
     }
   });
 

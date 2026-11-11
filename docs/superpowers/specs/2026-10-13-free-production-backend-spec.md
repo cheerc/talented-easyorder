@@ -246,7 +246,7 @@ prototype 保留訓練用途。首次切換可下載舊練習快照作本機參�
 免費備份不使用雲端排程；瀏覽器關閉不會自行備份。目標 RPO≤1營業日、RTO≤4小時（實測，不是服務SLA）；如需更低RPO，本人可收款高峰後多匯出一次。**備份頻率改約每月一次（#649）後，實際 RPO 是「上次備份至今」，不再滿足 RPO≤1營業日。每次備份是增量匯出 S 之後到 H 的全部命令，月備仍會一次備齊期間資料；風險只在兩次備份之間雲端資料本身遺失。使用者 2026-11-05 裁定此事暫緩、目前不是重點，本段數值暫不改；日後要調整 RPO 或改自動備份，從 [#657](https://github.com/cheerc/talented-easyorder/issues/657) 重新開啟討論。** 未來可評估自動異地備份，見 [備份 runbook 的未來展望](../../ops/firebase-backup-runbook.md#未來展望)。
 
 `accessEvents` 不屬於 P14 備份鏈：它不是 command，沒有 `seq`，不進 manifest 與重播，也不由備份還原。它是使用權稽核紀錄，復原後租約從空租約重新開始，舊事件留在原專案；在同一專案復原時須遵守 §4.2 的 epoch 下限。
-**P13c2 讀取：**F2 雲端報表頁（全部帳戶範圍）在稽核區下方顯示唯讀「使用權交接」表，由 `readAccessEvents({ range, leaseEpoch })` 以 `at` 的台北日界半開區間（含起、不含終）、`orderBy(at, __name__)` 分頁讀取（單頁 100，上限 20,000，超過即 `INCOMPLETE_SNAPSHOT`），讀前讀後比對 `dataHead` 與租約（換手 `LEASE_LOST`、版本變動 `STALE_SNAPSHOT`）。畫面只顯示時間、種類、操作人 email 與前一位持有人 email；事件只存 `previousHolderUid`，email 取自前一個 epoch 事件的 `actorEmail`（該事件的 `holderUid` 與 `actorUid` 都必須等於 `previousHolderUid`），找不到就顯示「（無紀錄）」，不顯示 UID；`previousHolderUid == null` 顯示「無」。不提供 CSV 匯出、不建立 `RecordExport`，表格只在其封套（dataset、H、日期區間、租約世代）與已一致的報表／稽核快照相同時顯示；讀取失敗或封套不一致只讓這張表不顯示並說明原因，不阻擋報表（`LEASE_LOST`／`UNAUTHORIZED` 例外，與其他讀取一樣使整頁失效）。單一帳戶範圍不讀取也不顯示。
+**P13c2 讀取（#691 P8 已移除畫面與讀取）：**P13c2 曾在 F2 雲端報表頁顯示唯讀「使用權交接」表並以 `readAccessEvents` 讀取 `accessEvents`。#691 決定 4 不需要使用權交接紀錄畫面（新登入者之後的操作紀錄本來就記錄操作人），P8 已移除該表、`readAccessEvents`、`decodeAccessEvent`、報表頁的 `accessEvents` 讀取與容量閘門的 `load.accessEvents`；報表頁不再讀取 `accessEvents`。**事件的寫入保留**：Rules（P13c1）仍要求每次 epoch 變動同交易寫入 `accessEvents/{epoch}`，P7 的「目前由 ○○ 使用中」與被登出提示用 `accessEvents/{目前 epoch}.actorEmail` 讀取占用者 email（見 §4.2）。
 
 ### 9.3 復原
 

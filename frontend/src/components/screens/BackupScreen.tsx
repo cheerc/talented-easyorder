@@ -52,7 +52,7 @@ const PROMPT_AFTER_MS = 10_000;
 function cloudRangeText(fromSeq: number, toSeq: number): string {
   return toSeq <= fromSeq ? `沒有新紀錄（目前到第 ${toSeq} 筆）` : `第 ${fromSeq + 1} 筆到第 ${toSeq} 筆`;
 }
-const BACKUP_UNSAVED_WARNING = '產生備份與瀏覽器發起下載都不代表檔案已存好；只有重新選取、解密並比對成功後才登記。取消、錯誤或失去使用權不會推進驗證狀態。';
+const BACKUP_UNSAVED_WARNING = '產生備份與瀏覽器發起下載都不代表檔案已存好；只有重新選取、解密並比對成功後才登記。取消、錯誤或登入失效不會推進驗證狀態。';
 
 function errorCode(error: unknown): string {
   return error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';

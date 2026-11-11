@@ -34,7 +34,7 @@ vi.mock('../../firebase/activeAccountLease', () => {
       isKnown: false,
       isHolder: false,
       isExpired: false,
-      error: '尚未從伺服器確認租約狀態',
+      error: '尚未確認登入狀態',
     },
     acquireLease: vi.fn(async () => acquired),
     getLeaseStatus: vi.fn(async () => lease),

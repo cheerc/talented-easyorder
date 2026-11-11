@@ -320,7 +320,7 @@ function requireGoogleUser(options: CloudDayVendorRepositoryOptions): CurrentUse
 function readError(error: unknown): CloudDayVendorRepositoryError {
   if (error instanceof CloudDayVendorRepositoryError) return error;
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code.includes('permission-denied')) return new CloudDayVendorRepositoryError('LEASE_LOST', '目前帳號沒有讀取營業日或供應商資料的有效使用權');
+  if (code.includes('permission-denied')) return new CloudDayVendorRepositoryError('LEASE_LOST', '目前無法讀取營業日或供應商資料：可能有其他人已登入，或登入已失效。請重新登入後再試。');
   if (code.includes('unauthenticated')) return new CloudDayVendorRepositoryError('UNAUTHORIZED', '請重新登入 Google 操作員帳號');
   if (code.includes('resource-exhausted')) return new CloudDayVendorRepositoryError('QUOTA_EXCEEDED', '目前讀取次數已達服務限制');
   if (code.includes('unavailable') || code.includes('deadline-exceeded') || code.includes('cancelled')) {
@@ -344,7 +344,7 @@ function decodeHead(value: unknown): { seq: number; datasetId: string; goLiveDat
 function decodeLease(value: unknown, uid: string): { selectionDate: string } {
   if (!hasExactKeys(value, ['holderUid', 'epoch', 'updatedAt'])
     || value.holderUid !== uid || !integer(value.epoch) || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudDayVendorRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
+    throw new CloudDayVendorRepositoryError('LEASE_LOST', '目前無法確認登入狀態，請重新登入後再試。');
   }
   return { selectionDate: taipeiDate(value.updatedAt) };
 }
@@ -552,7 +552,7 @@ export function createCloudDayVendorRepository(
       const user = requireGoogleUser(options);
       const before = await readHead(db);
       const leaseSnapshot = await getDocFromServer(doc(db, accessLeasePath()));
-      if (!leaseSnapshot.exists()) throw new CloudDayVendorRepositoryError('LEASE_LOST', '使用權租約不存在');
+      if (!leaseSnapshot.exists()) throw new CloudDayVendorRepositoryError('LEASE_LOST', '找不到登入狀態，請重新登入後再試。');
       const { selectionDate } = decodeLease(leaseSnapshot.data(), user.uid);
       const dayId = targetDayId ?? selectionDate;
       if (!validDate(dayId)) throw new CloudDayVendorRepositoryError('INVALID_INPUT', '營業日必須是 YYYY-MM-DD');
@@ -565,7 +565,7 @@ export function createCloudDayVendorRepository(
       const visibleVendors = physicalVendors.filter(vendor => !vendor.deleted);
       const leaseAfter = await getDocFromServer(doc(db, accessLeasePath()));
       if (!leaseAfter.exists() || decodeLease(leaseAfter.data(), user.uid).selectionDate !== selectionDate) {
-        throw new CloudDayVendorRepositoryError('STALE_SNAPSHOT', '伺服器租約日期在讀取期間更新，請重新載入');
+        throw new CloudDayVendorRepositoryError('STALE_SNAPSHOT', '讀取期間日期已更新，請重新載入。');
       }
       const after = await readHead(db);
       if (before.seq !== after.seq || before.datasetId !== after.datasetId || before.goLiveDate !== after.goLiveDate) {

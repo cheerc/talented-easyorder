@@ -327,7 +327,7 @@ export function decodeCloudStudentRecord(id: string, value: unknown): CloudStude
 function readError(error: unknown): CloudStudentRepositoryError {
   if (error instanceof CloudStudentRepositoryError) return error;
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code.includes('permission-denied')) return new CloudStudentRepositoryError('LEASE_LOST', '目前帳號沒有讀取學生名單的有效使用權');
+  if (code.includes('permission-denied')) return new CloudStudentRepositoryError('LEASE_LOST', '目前無法讀取學生名單：可能有其他人已登入，或登入已失效。請重新登入後再試。');
   if (code.includes('unauthenticated')) return new CloudStudentRepositoryError('UNAUTHORIZED', '請重新登入 Google 操作員帳號');
   if (code.includes('resource-exhausted')) return new CloudStudentRepositoryError('QUOTA_EXCEEDED', '目前讀取次數已達服務限制');
   if (code.includes('unavailable') || code.includes('deadline-exceeded') || code.includes('cancelled')) {

@@ -708,7 +708,7 @@ describe('CloudDayVendorsPage', () => {
     repository.loadSnapshot.mockRejectedValueOnce({ code: 'UNAUTHORIZED', message: 'not allowed' });
     renderPage({}, reportNavigationState);
 
-    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
     await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked'));
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
   });
@@ -728,7 +728,7 @@ describe('CloudDayVendorsPage', () => {
     await act(async () => {
       resolveSave({ ok: false, error: { code: 'LEASE_LOST', message: 'lease changed' } });
     });
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
+    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
     expect(screen.getByText(/命令編號 00000000-0000-4000-8000-000000000007/)).toBeInTheDocument();
     const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
     expect(text).not.toContain('vendor-pii-id');
@@ -783,7 +783,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
     await screen.findByText(/正在從伺服器載入完整營業日/);
     await act(async () => { rejectReload({ code: 'LEASE_LOST', message: 'lease changed' }); });
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
+    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
     await act(async () => {
       resolveSave(successful('00000000-0000-4000-8000-000000000007', 'SaveVendor', { vendorId: 'pending-private-id' }));
     });
@@ -817,7 +817,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
     await screen.findByText(/正在從伺服器載入完整營業日/);
     await act(async () => { rejectConfirmation({ code: 'UNAUTHORIZED', message: 'not authorized' }); });
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
+    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
     await act(async () => {
       resolveList(snapshot({ vendors: [vendor('private-after-revoke', { name: '不得回填的供應商' })] }));
     });
@@ -840,7 +840,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'latch-private-id' } });
     fireEvent.change(within(createForm).getByLabelText('供應商名稱'), { target: { value: '權限失效供應商' } });
     fireEvent.click(within(createForm).getByRole('button', { name: '建立供應商' }));
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
+    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
 
     view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" />);
     const reload = screen.getByRole('button', { name: '重新載入伺服器資料' });
@@ -1180,9 +1180,9 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
       await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
       fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
-      expect(await screen.findByText('授權狀態已失效。敏感資料與操作草稿已清除；請重新登入並取得有效使用權。')).toBeInTheDocument();
+      expect(await screen.findByText('登入狀態已失效。資料與操作草稿已清除；請重新登入。')).toBeInTheDocument();
       const recovery = screen.getByRole('alert', { name: '命令結果確認' });
-      expect(recovery).toHaveTextContent('使用權已變更；敏感操作內容已清除。');
+      expect(recovery).toHaveTextContent('其他人已登入或登入已失效；操作內容已清除。');
       expect(recovery).toHaveTextContent(commandId);
       expect(recovery).not.toHaveTextContent('開帳現金');
       expect(screen.queryByTestId('cloud-vendor-row-private-vendor')).not.toBeInTheDocument();
@@ -1406,7 +1406,7 @@ describe('CloudDayVendorsPage: #585 quiet command feedback', () => {
     expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
 
     await act(async () => failRead());
-    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: `${today} 營業日` })).not.toBeInTheDocument();
     expect(screen.queryByTestId('cloud-day-vendors-content')).not.toBeInTheDocument();
   });

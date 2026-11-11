@@ -29,7 +29,7 @@ test('101 keyboard payment produces one confirmed effect and returns to search',
     totals: { activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 },
     lastSettlementRevision: 0, lastCommandId: seedId, updatedAt: new Date(),
   });
-  await page.getByRole('button', { name: '取得系統使用權' }).click();
+  await page.getByRole('button', { name: '開始使用' }).click();
   await page.getByRole('button', { name: '櫃台' }).click();
   await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
   await page.locator('body').click({ position: { x: 2, y: 500 } });
@@ -73,7 +73,7 @@ test('multiple candidates move only through visible options and reset on a new q
     });
     await upsertDocument('studentCodes', code, { studentId, lastCommandId: seedId, updatedAt: new Date() });
   }
-  const acquire = page.getByRole('button', { name: '取得系統使用權' });
+  const acquire = page.getByRole('button', { name: '開始使用' });
   await expect(acquire.or(page.locator('.operator-strip'))).toBeVisible();
   if (await acquire.isVisible()) await acquire.click();
   await page.getByRole('button', { name: '櫃台' }).click();

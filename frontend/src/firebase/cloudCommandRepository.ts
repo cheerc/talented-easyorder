@@ -235,7 +235,7 @@ function decodeLease(value: unknown): Data {
     || (value.holderUid !== null && (typeof value.holderUid !== 'string' || value.holderUid.length === 0))
     || !integer(value.epoch)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '使用權資料格式異常，請停止操作並聯絡維護者');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '登入狀態資料異常，請停止操作並聯絡維護者。');
   }
   return value;
 }
@@ -381,7 +381,7 @@ function checkOperator(raw: unknown, user: CurrentUser): void {
 function checkLease(raw: unknown, input: CanonicalEnabledInput, user: CurrentUser): void {
   const lease = decodeLease(raw);
   if (lease.holderUid !== user.uid || lease.epoch !== input.leaseEpoch) {
-    throw new RejectCommand('LEASE_LOST', '目前使用權租約已變更，請重新確認');
+    throw new RejectCommand('LEASE_LOST', '其他人已登入，這個頁面已停止操作。請重新登入。');
   }
   // Expiration authority remains the Firestore Rules request.time comparison.
 }
@@ -644,7 +644,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const current = getCurrentUser(options);
     requireVerifiedGoogle(current);
     if (current.uid !== user.uid || current.email !== user.email) {
-      throw new RejectCommand('LEASE_LOST', '登入身分已變更，請重新確認使用權');
+      throw new RejectCommand('LEASE_LOST', '登入身分已變更，請重新登入。');
     }
   }
 
@@ -686,16 +686,16 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     recoveryReader?.assertCurrent();
     assertCurrentRecoveryOwner(user);
     if ([headSnapshot, leaseSnapshot, operatorSnapshot].some(snapshot => snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) {
-      throw new RejectCommand('UNKNOWN_RESULT', '伺服器尚未確認目前資料與使用權');
+      throw new RejectCommand('UNKNOWN_RESULT', '尚未確認目前資料與登入狀態，請稍後再試。');
     }
     if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
-    if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '使用權租約不存在');
+    if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '找不到登入狀態，請重新登入後再試。');
     if (!operatorSnapshot.exists()) throw new RejectCommand('UNAUTHORIZED', '操作員文件不存在');
     const head = decodeHead(headSnapshot.data());
     const lease = decodeLease(leaseSnapshot.data());
     checkOperator(operatorSnapshot.data(), user);
     if (lease.holderUid !== user.uid || lease.epoch !== expectedEpoch) {
-      throw new RejectCommand('LEASE_LOST', '目前使用權租約已變更，請重新確認');
+      throw new RejectCommand('LEASE_LOST', '其他人已登入，這個頁面已停止操作。請重新登入。');
     }
     return { uid: user.uid, datasetId: String(head.datasetId), leaseEpoch: Number(lease.epoch), maintenance: head.maintenance === true };
   }
@@ -746,7 +746,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       }
       const after = await readRecoveryContext(user, expectedEpoch, recoveryReader);
       if (before.uid !== after.uid || before.datasetId !== after.datasetId || before.leaseEpoch !== after.leaseEpoch) {
-        throw new RejectCommand('LEASE_LOST', '查詢期間使用權或資料集已變更');
+        throw new RejectCommand('LEASE_LOST', '查詢期間登入狀態或資料已變更，請重新查詢。');
       }
       return checks;
     } catch (error) {
@@ -841,7 +841,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     recoveryReader?: CloudRecoveryReader,
   ): Promise<PendingReceiptCheck> {
     if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1) {
-      throw new CloudCommandReadError('LEASE_LOST', '目前使用權租約世代不正確');
+      throw new CloudCommandReadError('LEASE_LOST', '登入狀態已改變（可能有其他人登入），請重新登入。');
     }
     const check = await confirmPendingCommand(record, expectedEpoch, recoveryReader);
     if (check.status === 'matched') return { status: 'matched', receipt: check.receipt };
@@ -850,7 +850,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
   async function confirmPendingPage(records: readonly PendingCommandIdentity[], expectedEpoch: number): Promise<PendingReceiptCheck[]> {
     if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1) {
-      throw new CloudCommandReadError('LEASE_LOST', '目前使用權租約世代不正確');
+      throw new CloudCommandReadError('LEASE_LOST', '登入狀態已改變（可能有其他人登入），請重新登入。');
     }
     return (await confirmPendingBatch(records, expectedEpoch)).map(check => (
       check.status === 'matched' ? { status: 'matched', receipt: check.receipt } : check
@@ -865,7 +865,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     try {
       const normalized = normalizeEnabledCommandInput(untrustedInput);
       if (normalized.leaseEpoch !== expectedEpoch) {
-        throw new RejectCommand('LEASE_LOST', '凍結命令的使用權世代與目前頁面不符');
+        throw new RejectCommand('LEASE_LOST', '這筆操作是在先前的登入狀態下送出的，與目前頁面不符。請重新登入後，用原命令編號查詢結果。');
       }
       // Keep a detached canonical snapshot before any caller can mutate the original
       // object while recovery reads are in flight.
@@ -890,7 +890,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1
       || typeof expectedDatasetId !== 'string' || expectedDatasetId.length < 1 || expectedDatasetId.length > 256
       || typeof expectedUid !== 'string' || expectedUid.length < 1 || expectedUid.length > 256) {
-      throw new CloudCommandReadError('INVALID_INPUT', '待確認命令的使用權或資料集識別不正確');
+      throw new CloudCommandReadError('INVALID_INPUT', '待確認的命令與目前登入狀態或資料不符，請重新登入後再查。');
     }
     const candidateUser = getCurrentUser(options);
     try {
@@ -945,7 +945,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
       const after = await readRecoveryContext(user, expectedEpoch, recoveryReader);
       if (before.uid !== after.uid || before.datasetId !== after.datasetId || before.leaseEpoch !== after.leaseEpoch) {
-        throw new RejectCommand('LEASE_LOST', '查詢期間使用權或資料集已變更');
+        throw new RejectCommand('LEASE_LOST', '查詢期間登入狀態或資料已變更，請重新查詢。');
       }
       if (verificationError) throw verificationError;
       if (!result) throw new RejectCommand('UNKNOWN_RESULT', '目前無法安全確認原命令');
@@ -1027,7 +1027,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     } catch (error) {
       if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
       if (error instanceof CloudRecoveryReaderError) throw new CloudCommandReadError(error.code, error.message);
-      throw new CloudCommandReadError(mapTransactionError(error), '目前無法確認資料集與使用權');
+      throw new CloudCommandReadError(mapTransactionError(error), '目前無法確認資料與登入狀態，請稍後再試。');
     }
   }
 
@@ -1092,7 +1092,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       if (preflight.maintenance) throw new RejectCommand('MAINTENANCE', '系統正在維護，暫停新命令');
     } catch (error) {
       if (error instanceof RejectCommand) return errorResult(error.code, error.message);
-      return errorResult(mapTransactionError(error), '無法從伺服器確認目前操作員、資料集與使用權');
+      return errorResult(mapTransactionError(error), '無法從伺服器確認目前操作員、資料與登入狀態，請稍後再試。');
     }
 
     const pendingIdentity: PendingCommandIdentity = {
@@ -1155,7 +1155,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
         if (!operatorSnapshot.exists()) throw new RejectCommand('UNAUTHORIZED', '操作員文件不存在');
         checkOperator(operatorSnapshot.data(), user);
-        if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '使用權租約不存在');
+        if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '找不到登入狀態，請重新登入後再試。');
         checkLease(leaseSnapshot.data(), input, user);
         if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
         const headBefore = decodeHead(headSnapshot.data());
@@ -1596,7 +1596,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
               throw new RejectCommand('REVISION_CONFLICT', '讀取菜單來源後雲端資料已變更，請重新載入');
             }
             if (taipeiCalendarDate((leaseSnapshot.data() as Data).updatedAt as Timestamp) !== payload.selectionDate) {
-              throw new RejectCommand('REVISION_CONFLICT', '伺服器租約日期已變更，請重新載入後再儲存菜單');
+              throw new RejectCommand('REVISION_CONFLICT', '日期已更新（可能剛過午夜），請重新載入後再儲存菜單。');
             }
             if (!vendorSnapshot?.exists()) throw new RejectCommand('INVALID_INPUT', '菜單供應商不存在');
             const vendor = decodeVendor(vendorSnapshot.data());
@@ -2193,7 +2193,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
         if (resultCode === 'LEASE_LOST') {
           const diagnosed = leaseDenialResult(await readRevisionConflict(db, input));
-          return diagnosed ?? errorResult('LEASE_LOST', '目前操作使用權已失效；請重新確認使用權');
+          return diagnosed ?? errorResult('LEASE_LOST', '其他人已登入或登入已失效，這個頁面已停止操作。請重新登入。');
         }
       }
       return resultFromUnknownError();

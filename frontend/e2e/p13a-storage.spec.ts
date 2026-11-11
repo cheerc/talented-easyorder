@@ -229,7 +229,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await expect(appPage.getByRole('alert')).toContainText('請關閉其他 EasyOrder 分頁');
       await expect(appPage.getByRole('button', { name: '重新載入' })).toBeVisible();
       await expect(appPage.getByRole('button', { name: '使用 Google 登入' })).toHaveCount(0);
-      await expect(appPage.getByRole('button', { name: '取得系統使用權' })).toHaveCount(0);
+      await expect(appPage.getByRole('button', { name: '開始使用' })).toHaveCount(0);
 
       await legacyPage.close();
       await expect(appPage.getByRole('button', { name: '使用 Google 登入' })).toBeVisible({ timeout: 15000 });
@@ -335,7 +335,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
         updatedAt: now,
       });
 
-      await pageA.getByRole('button', { name: '取得系統使用權' }).click();
+      await pageA.getByRole('button', { name: '開始使用' }).click();
       await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await pageA.getByRole('button', { name: '櫃台' }).click();
@@ -373,7 +373,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       contextB = await browser.newContext({ baseURL: E2E_BASE_URL });
       const pageB = await contextB.newPage();
       await signInGoogle(pageB, E2E_IDENTITIES.operatorB.email);
-      await pageB.getByRole('button', { name: '取得系統使用權' }).click();
+      await pageB.getByRole('button', { name: '開始使用' }).click();
       await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '3');
       await expect(pageB.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await pageB.getByRole('button', { name: '櫃台' }).click();

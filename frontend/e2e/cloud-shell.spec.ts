@@ -3,7 +3,7 @@ import { settings, release } from './helpers/navigation';
 
 test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ googleSession }) => {
   const { page } = googleSession;
-  const acquire = page.getByRole('button', { name: '取得系統使用權' });
+  const acquire = page.getByRole('button', { name: '開始使用' });
   await expect(acquire.or(page.locator('.operator-menu'))).toBeVisible();
   if (await acquire.isVisible()) await acquire.click();
   await expect(page.locator('.operator-menu')).toBeVisible();

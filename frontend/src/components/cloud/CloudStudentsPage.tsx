@@ -320,7 +320,7 @@ function displayError(error: unknown): string {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = String((error as { code?: unknown }).code);
     if (code === 'OFFLINE') return '目前無法連線到雲端，學生資料已清除。請恢復連線後重新載入。';
-    if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '目前使用權已變更，學生資料已清除。請重新確認使用權。';
+    if (code === 'LEASE_LOST' || code === 'ACCESS_BUSY') return '其他人已登入或登入已失效，學生資料已清除。請重新登入。';
     if (code === 'UNAUTHORIZED') return '目前帳號沒有學生資料存取權，學生資料已清除。請重新登入確認權限。';
     if (code === 'QUOTA_EXCEEDED') return '雲端讀取額度不足，沒有顯示不完整名單。請稍後重新載入。';
     if (code === 'MAINTENANCE') return '系統正在維護，沒有顯示學生資料。請稍後重新載入。';
@@ -784,7 +784,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       if (revokedIdentityRef.current === key) return;
       if (!key || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
         revokeAuthorization(key, generation, command.commandId, {
-          code: 'LEASE_LOST', message: '目前沒有有效的操作使用權，學生資料已清除。請重新確認使用權。',
+          code: 'LEASE_LOST', message: '目前沒有有效的登入，學生資料已清除。請重新登入。',
         });
         return;
       }
@@ -1426,7 +1426,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       <strong>{recovery.phase === 'receipt'
         ? '已找到伺服器回執，名單尚待再次讀取。'
         : recovery.phase === 'access-lost'
-          ? '使用權已變更；敏感操作內容已清除。'
+          ? '其他人已登入或登入已失效；操作內容已清除。'
         : recovery.phase === 'checking'
           ? '正在查詢原命令結果…'
           : recovery.phase === 'submitting' && recovery.timedOut
@@ -1434,7 +1434,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           : '結果確認中，請勿重複建立／修改。'}</strong>
       {recovery.command && <span>{commandLabel(recovery.command)} · 命令編號 {recovery.commandId}</span>}
       {!recovery.command && <span>命令編號 {recovery.commandId}</span>}
-      {recovery.phase === 'access-lost' && <span>只保留命令編號供稍後同編號核對；請先重新確認登入帳號與使用權。</span>}
+      {recovery.phase === 'access-lost' && <span>只保留命令編號供稍後同編號核對；請先重新登入。</span>}
       <div className="cloud-students__actions">
         {recovery.command && (recovery.phase === 'unknown'
           || (recovery.phase === 'submitting' && recovery.timedOut)) && (
@@ -1512,7 +1512,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       {page.actionError && !page.createOpen && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (
         <Callout variant="warn" role="status" className="cloud-students__callout">
-          授權狀態已失效。請重新登入並取得有效使用權；若登入狀態尚未更新，重新載入整頁會再次向伺服器驗證。
+          登入狀態已失效。請重新登入；若登入狀態尚未更新，重新載入整頁會再次向伺服器驗證。
         </Callout>
       )}
       {page.notice && <div className="cloud-students__notice" role="status">{page.notice}</div>}
