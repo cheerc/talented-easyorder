@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { Toast } from '../ui/Toast';
 import { ActionCard } from '../ui/ActionCard';
 import { Callout } from '../ui/Callout';
+import { DateField } from '../ui/DateField';
 import { HelpTip } from '../ui/HelpTip';
 import { StatTile } from '../ui/StatTile';
 import { CalendarPlus, UtensilsCrossed } from 'lucide-react';
@@ -1759,22 +1760,29 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       <header className="cloud-orders__header">
         <div className="cloud-orders__header-info">
           <h2>櫃台點餐</h2>
-          <span className="cloud-orders__date-label">營業日：{businessDate || '—'}</span>
-          {snapshot && (snapshot.backfillDays.length > 0 || backfillView) && (
-            <label className="cloud-orders__day-switch">
-              切換營業日
-              <select
-                data-testid="orders-day-select"
-                value={backfillView ? businessDate : ''}
-                disabled={busy || page.loading}
-                onChange={event => void loadSnapshot({ dayId: event.target.value === '' ? null : event.target.value })}
-              >
-                <option value="">今天（{snapshot.today}）</option>
-                {snapshot.backfillDays.map(item => (
-                  <option key={item.dayId} value={item.dayId}>回填中 {item.dayId}</option>
-                ))}
-              </select>
-            </label>
+          {snapshot && (snapshot.backfillDays.length > 0 || backfillView) ? (
+            <DateField
+              id="orders-business-date"
+              variant="select"
+              size="compact"
+              testId="orders-day-select"
+              value={backfillView ? businessDate : ''}
+              disabled={busy || page.loading}
+              options={[
+                { value: '', label: `今天（${snapshot.today}）` },
+                ...snapshot.backfillDays.map(item => ({ value: item.dayId, label: `回填中 ${item.dayId}` })),
+              ]}
+              onConfirm={value => void loadSnapshot({ dayId: value === '' ? null : value })}
+              status={backfillView ? '回填中' : '今天'}
+            />
+          ) : (
+            <DateField
+              id="orders-business-date"
+              variant="static"
+              size="compact"
+              value={businessDate || '—'}
+              status={snapshot && businessDate ? '今天' : undefined}
+            />
           )}
           {snapshot?.backfillDaysError && (
             <span className="cloud-orders__muted" data-testid="orders-backfill-list-error">

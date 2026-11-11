@@ -19,7 +19,6 @@
 
 .cloud-day-vendors__header,
 .cloud-day-vendors__section-heading,
-.cloud-day-vendors__date-form,
 .cloud-day-vendors__actions,
 .cloud-day-vendors__row-actions {
   display: flex;
@@ -164,7 +163,10 @@
   overflow-wrap: anywhere;
 }
 
-.cloud-day-vendors__date-panel,
+.cloud-day-vendors__content > .date-field-ui {
+  margin-top: 22px;
+}
+
 .cloud-day-vendors__day-section,
 .cloud-day-vendors__vendor-section {
   margin-top: 22px;
@@ -173,31 +175,16 @@
   border-radius: var(--r);
 }
 
-.cloud-day-vendors__date-panel {
-  background: var(--surface-sunken);
-}
-
-.cloud-day-vendors__date-panel .cloud-day-vendors__section-heading,
 .cloud-day-vendors__day-section > .cloud-day-vendors__section-heading,
 .cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading {
   margin-bottom: 12px;
 }
 
-.cloud-day-vendors__date-panel h2,
 .cloud-day-vendors__day-section > .cloud-day-vendors__section-heading h2,
 .cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading h2 {
   margin: 0;
   font-size: var(--t-lg);
   letter-spacing: -.015em;
-}
-
-.cloud-day-vendors__date-form {
-  flex-wrap: wrap;
-}
-
-.cloud-day-vendors__date-form label {
-  font-size: var(--t-xs);
-  font-weight: 700;
 }
 
 .cloud-day-vendors__input {
@@ -209,20 +196,6 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
-}
-
-.cloud-day-vendors__date-form .cloud-day-vendors__input {
-  width: auto;
-  min-height: 38px;
-}
-
-.cloud-day-vendors__date-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin-left: auto;
-  color: var(--ink-hint);
-  font-size: var(--t-xs);
 }
 
 .cloud-day-vendors__section-heading p {
@@ -258,8 +231,7 @@
 }
 
 .cloud-day-vendors__card .callout-ui,
-.cloud-day-vendors__day-section > .callout-ui,
-.cloud-day-vendors__date-panel > .callout-ui {
+.cloud-day-vendors__day-section > .callout-ui {
   margin-top: var(--s3);
 }
 
@@ -415,19 +387,9 @@
     width: 100%;
   }
 
-  .cloud-day-vendors__date-panel,
   .cloud-day-vendors__day-section,
   .cloud-day-vendors__vendor-section {
     padding: 14px;
   }
 
-  .cloud-day-vendors__date-form {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .cloud-day-vendors__date-form .cloud-day-vendors__input,
-  .cloud-day-vendors__date-form button {
-    width: 100%;
-  }
 }

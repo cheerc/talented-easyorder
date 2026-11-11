@@ -23,6 +23,7 @@ import { CircleCheck } from 'lucide-react';
 import { Callout } from '../ui/Callout';
 import { CommandProgress } from '../ui/CommandProgress';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { DateField } from '../ui/DateField';
 import { EmptyState } from '../ui/EmptyState';
 import { HelpTip } from '../ui/HelpTip';
 import { StatTile } from '../ui/StatTile';
@@ -495,9 +496,6 @@ export function CloudDayClosePage({
   // it needs the bounds of the last loaded overview for that.
   const [dateMeta, setDateMeta] = useState<{ goLiveDate: string; selectionDate: string } | null>(null);
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
-  // True between a keystroke in the date field and its Enter/blur: typing passes through valid dates (year 0002…), so only
-  // Enter or leaving the field confirms. A picker choice or a pasted/filled value has no keystroke and loads at once.
-  const typingDateRef = useRef(false);
   const requestedDayRef = useRef<string | null>(null);
   const scopeRef = useRef(scopeKey);
   const generationRef = useRef(0);
@@ -1701,36 +1699,15 @@ export function CloudDayClosePage({
       {page.loading && !showingStale && <div className="cloud-day-close__loading" role="status">正在從伺服器載入日結資料…</div>}
 
       {dateBarMeta && (
-        <section className="cloud-day-close__datebar" aria-label="日期選擇">
-          <label htmlFor="cloud-day-close-date">查看日期</label>
-          <input
-            id="cloud-day-close-date"
-            className="cloud-day-close__input cloud-day-close__mono"
-            type="date"
-            min={dateBarMeta.goLiveDate}
-            value={page.dayIdDraft}
-            onKeyDown={event => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                typingDateRef.current = false;
-                confirmDate(event.currentTarget.value);
-              } else if (event.key !== 'Tab' && event.key !== 'Escape') {
-                typingDateRef.current = true;
-              }
-            }}
-            onChange={event => {
-              const value = event.target.value;
-              updatePage(previous => ({ ...previous, dayIdDraft: value, actionError: '' }));
-              if (!typingDateRef.current) confirmDate(value);
-            }}
-            onBlur={event => {
-              typingDateRef.current = false;
-              confirmDate(event.currentTarget.value);
-            }}
-            disabled={busy}
-            required
-          />
-          {snapshot && (
+        <DateField
+          id="cloud-day-close-date"
+          variant="date"
+          min={dateBarMeta.goLiveDate}
+          value={page.dayIdDraft}
+          onChange={value => updatePage(previous => ({ ...previous, dayIdDraft: value, actionError: '' }))}
+          onConfirm={confirmDate}
+          disabled={busy}
+          status={snapshot && (
             <span className="cloud-day-close__day-state" data-testid="cloud-day-state">
               {day
                 ? <StatusBadge variant={statusVariant(day.status)} className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{statusLabel(day.status)}</StatusBadge>
@@ -1738,7 +1715,7 @@ export function CloudDayClosePage({
               {snapshot.dayId === selectionDate ? '今天' : snapshot.dayId < selectionDate ? '過去日期' : '未來日期'}
             </span>
           )}
-        </section>
+        />
       )}
 
       {snapshot && (!page.loading || showingStale) && (

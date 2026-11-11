@@ -25,7 +25,7 @@
 .cloud-orders__header-info {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 0.25rem 1rem;
 }
 
@@ -35,20 +35,6 @@
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: 0.01em;
-}
-
-.cloud-orders__date-label {
-  font-size: var(--t-xs);
-  color: var(--ink-hint);
-  font-variant-numeric: tabular-nums;
-}
-
-.cloud-orders__day-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--t-xs);
-  color: var(--ink-2);
 }
 
 /* 原生 select 不繼承字級（瀏覽器預設 13.333px，不會等比放大）：與其他雲端頁一致，繼承容器的 token 字級。 */
