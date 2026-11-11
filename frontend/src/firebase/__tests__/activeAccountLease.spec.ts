@@ -761,7 +761,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       }));
 
       // Business reads require holderUid == caller; the old holder is no longer it. (A full-shape command with the old
-      // epoch is proven in cloudRulesProof.spec.ts, "P7 #691 takeover" case.)
+      // epoch is proven in cloudCommands.spec.ts, "P7.691" case.)
       await assertFails(getDoc(doc(dbA, 'students/stu-1')));
       await assertFails(getDocs(query(collection(dbA, 'commands'), limit(1))));
 
