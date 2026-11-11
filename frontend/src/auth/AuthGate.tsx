@@ -60,7 +60,8 @@ export function AuthGate({
   const [signInError, setSignInError] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [showSignInWait, setShowSignInWait] = useState(false);
-  const [confirmTakeoverOpen, setConfirmTakeoverOpen] = useState(false);
+  // #691: the confirmation is for the occupant (holder and epoch) that was on screen when it opened.
+  const [confirmTarget, setConfirmTarget] = useState<{ holderUid: string; epoch: number } | null>(null);
   // #691: who is in, read from the access record of the lease epoch the screen is showing. null = unknown (其他人).
   const [occupant, setOccupant] = useState<{ epoch: number; holderUid: string; email: string | null } | null>(null);
 
@@ -68,6 +69,11 @@ export function AuthGate({
   const observedEpoch = activeLease?.epoch ?? 0;
   const watchedOccupantUid = access.ok && observedHolderUid !== null && observedHolderUid !== access.profile.uid
     ? observedHolderUid : null;
+  // The confirmation lapses as soon as the occupant (holder or epoch) differs from the one it was opened for. Epochs only
+  // grow, so a lapsed target can never match again and a later occupant never inherits it.
+  const targetStillOccupies = confirmTarget !== null && confirmTarget.holderUid === observedHolderUid && confirmTarget.epoch === observedEpoch
+    && watchedOccupantUid !== null;
+
   useEffect(() => {
     if (watchedOccupantUid === null) return;
     let cancelled = false;
@@ -305,7 +311,7 @@ export function AuthGate({
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
 
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <button type="button" className="auth-gate-primary" onClick={() => setConfirmTakeoverOpen(true)} disabled={isAcquiring}>
+              <button type="button" className="auth-gate-primary" onClick={() => setConfirmTarget({ holderUid: activeLease.holderUid!, epoch: activeLease.epoch })} disabled={isAcquiring}>
                 {isAcquiring ? '登入中...' : '登入並讓對方登出'}
               </button>
               <button type="button" onClick={() => void signOutOperator(auth)}>
@@ -313,17 +319,18 @@ export function AuthGate({
               </button>
             </div>
             <ConfirmDialog
-              open={confirmTakeoverOpen}
+              open={targetStillOccupies}
               title="讓對方登出？"
               message={`${occupantName} ${activeLease.isExpired ? '可能仍在使用' : '正在使用'}。繼續登入會讓對方立即登出，對方尚未送出的操作不會保存。`}
               confirmLabel="是，讓對方登出並繼續"
               cancelLabel="取消"
               variant="danger"
               defaultAction="cancel"
-              onCancel={() => setConfirmTakeoverOpen(false)}
+              onCancel={() => setConfirmTarget(null)}
               onConfirm={() => {
-                setConfirmTakeoverOpen(false);
-                void attemptAcquire({ confirmedTakeoverEpoch: activeLease.epoch });
+                const target = confirmTarget;
+                setConfirmTarget(null);
+                if (target && targetStillOccupies) void attemptAcquire({ confirmedTakeoverEpoch: target.epoch });
               }}
             />
           </div>
