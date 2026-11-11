@@ -136,6 +136,8 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 | RecordExport／RecordPrint | 僅更新 dataHead 與 command | 不寫業務投影或報表資料；payload 保存有效 Gregorian 日期的完整 inclusive 範圍（最多31日）、帳戶 scope（UUID 或 null）與固定快照 sourceSeq；settlements／post-close-entries 僅允許 all scope。Print 另保存範圍內的 businessDate anchor。Rules 綁定實際 before／after head；sourceSeq 不得大於提交前 head.seq；同 ID 不同範圍、scope 或 H 拒絕 |
 | RecordBackup | 僅更新 dataHead 與 command | 記錄已驗證的本機備份發起與來源區間，不嵌入整份備份 |
 
+**畫面用語對照**：畫面上的「補登」＝程式／資料中的 backfill（command `StartBackfill`，collection `backfillDays`，交易欄位 `backfilled`）。識別字已寫入正式資料並由 Rules 驗證，不改名；只有使用者可見文字用「補登」。`BackfillOpeningCash` 在畫面上叫「補開帳」（補上那天的開帳現金），`RecordPostCloseEntry` 叫「關帳後補記」，兩者與「補登」是不同概念，用語不變。細節見日結契約開頭的用語對照。
+
 取消已 voided 的交易拒絕（同 command 重送則回原 receipt）。payment 更正仍須>0，改成零使用作廢；order 餐費可零、收款可零；expense 收入 `mealPrice=0,paidAmount>0`，支出相反。CancelKeepDeposit 在原 paidAmount>0 時將有效列改 payment、mealPrice=0；paidAmount=0 則 void，不能建立零元 payment。一般 CorrectTransaction 只准既有 mealPrice/paidAmount/note，不跨帳戶、不任意改 type；取消專用 kind 才准 order→payment。P10a 實作註記：CorrectTransaction 的 payload 固定為 `{ mealPrice, paidAmount, amount, note, reason }`。order／payment／expense 的 `amount` 是衍生值（`paidAmount − mealPrice`，payment 為 `paidAmount`），必須與前兩欄一致；退款列的 `mealPrice`、`paidAmount` 固定為 0，`amount` 才是要更正的欄位。Undo 的 targets 一律含 `studentId`（櫃台收支為 `__cashier__`），學生列的 `expectedRevisions` 另含 `student`。P14 備份的 replay validator 依同一形狀驗證。
 
 ### 6.2 原子提交、序號、冪等
