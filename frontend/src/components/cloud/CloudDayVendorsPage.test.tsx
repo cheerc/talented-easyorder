@@ -19,6 +19,7 @@ const repository = vi.hoisted(() => {
     setDayMenu: vi.fn(),
     setOpeningCash: vi.fn(),
     findPreviousClosed: vi.fn(),
+    readLastWeekMenus: vi.fn(),
     readCommand: vi.fn(),
     commitDayVendorIntent: vi.fn((intent: { kind: string; input: unknown }) => {
       switch (intent.kind) {
@@ -98,7 +99,6 @@ function snapshot(overrides: Partial<CloudDayVendorSnapshot> = {}): CloudDayVend
       updatedAt: '2026-10-15T00:00:00.000Z',
     },
     vendors: [],
-    latestEarlierMenu: null,
     seq: 10,
     datasetId: 'demo-p07',
     goLiveDate: today,
@@ -247,36 +247,37 @@ describe('CloudDayVendorsPage', () => {
     expect(await screen.findByText(new RegExp(`已確認 設定 ${future} 菜單 完成`))).toBeInTheDocument();
   });
 
-  it('inherits only the immediate validated earlier menu and keeps its source date in the command', async () => {
-    const sourceVendor = vendor('vendor-source', { name: '來源供應商' });
+  it('copies a last-week menu into the editable form and submits it as a direct set (no inherited source)', async () => {
+    const sourceVendor = vendor('vendor-source', { name: '目前供應商名稱' });
     const current = snapshot({
       dayId: future,
       selectionDate: today,
       day: { ...snapshot().day!, dayId: future, revision: 5 },
-      vendors: [sourceVendor],
-      latestEarlierMenu: {
-        sourceDayId: today,
-        menu: {
-          businessDate: today,
-          itemName: '沿用餐點',
-          price: 125,
-          vendorId: sourceVendor.vendorId,
-          vendorNameSnapshot: sourceVendor.name,
-          updatedAt: '2026-10-15T00:00:00.000Z',
-          revision: 2,
-          inheritedFromDate: null,
-        },
-        sourceVendor,
-        blocked: null,
-      },
+      vendors: [sourceVendor, vendor('vendor-off', { status: 'inactive' })],
       seq: 31,
     });
     repository.loadSnapshot.mockResolvedValueOnce(current).mockResolvedValueOnce(current);
+    repository.readLastWeekMenus.mockResolvedValue([
+      { dayId: '2026-10-12', itemName: '複製餐點', price: 125, vendorId: 'vendor-source', vendorName: '目前供應商名稱' },
+      { dayId: '2026-10-13', itemName: '複製餐點', price: 125, vendorId: 'vendor-source', vendorName: '目前供應商名稱' },
+    ]);
     renderPage();
 
-    await screen.findByRole('button', { name: '帶入最新較早菜單' });
-    fireEvent.click(screen.getByRole('button', { name: '帶入最新較早菜單' }));
-    expect(screen.getByRole('textbox', { name: '菜單名稱' })).toBeDisabled();
+    await screen.findByRole('heading', { name: `${future} 菜單` });
+    expect(screen.queryByRole('button', { name: '帶入最新較早菜單' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '改為直接設定' })).not.toBeInTheDocument();
+    expect(repository.readLastWeekMenus).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+    expect(await screen.findAllByRole('button', { name: /複製餐點/ })).toHaveLength(2);
+    expect(repository.readLastWeekMenus).toHaveBeenCalledWith(future, current.vendors);
+    fireEvent.click(screen.getByRole('button', { name: '10/13（二）· 複製餐點 · $125 · 目前供應商名稱' }));
+
+    const name = await screen.findByRole('textbox', { name: '菜單名稱' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(name).toBeEnabled();
+    expect(name).toHaveValue('複製餐點');
+    fireEvent.change(screen.getByLabelText('價格（新臺幣整數）'), { target: { value: '95' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存菜單' }));
 
     await waitFor(() => expect(repository.setDayMenu).toHaveBeenCalledWith({
@@ -286,41 +287,37 @@ describe('CloudDayVendorsPage', () => {
       selectionDate: today,
       expectedRevision: 5,
       expectedHeadSeq: 31,
-      itemName: '沿用餐點',
-      price: 125,
+      itemName: '複製餐點',
+      price: 95,
       vendorId: 'vendor-source',
-      vendorNameSnapshot: '來源供應商',
-      inheritedFromDate: today,
+      vendorNameSnapshot: '目前供應商名稱',
+      inheritedFromDate: null,
     }));
   });
 
-  it('does not fall back to an older menu when the repository marks the newest source blocked', async () => {
-    const sourceVendor = vendor('inactive-source', { status: 'inactive' });
-    repository.loadSnapshot.mockResolvedValue(snapshot({
-      dayId: future,
-      selectionDate: today,
-      day: { ...snapshot().day!, dayId: future },
-      vendors: [sourceVendor],
-      latestEarlierMenu: {
-        sourceDayId: '2026-10-14',
+  it('offers the copy button when the day already has a menu and replaces the form draft only after a pick', async () => {
+    const existing = vendor('vendor-existing', { name: '既有供應商' });
+    const current = snapshot({
+      vendors: [existing],
+      day: {
+        ...snapshot().day!,
         menu: {
-          businessDate: '2026-10-14',
-          itemName: '不可沿用餐點',
-          price: 100,
-          vendorId: sourceVendor.vendorId,
-          vendorNameSnapshot: sourceVendor.name,
-          updatedAt: '2026-10-14T00:00:00.000Z',
-          revision: 1,
-          inheritedFromDate: null,
+          businessDate: today, itemName: '既有菜單', price: 80, vendorId: 'vendor-existing', vendorNameSnapshot: '既有供應商',
+          updatedAt: '2026-10-15T00:00:00.000Z', revision: 1, inheritedFromDate: null,
         },
-        sourceVendor,
-        blocked: 'vendor-inactive',
       },
-    }));
+    });
+    repository.loadSnapshot.mockResolvedValue(current);
+    repository.readLastWeekMenus.mockResolvedValue([]);
     renderPage();
 
-    expect(await screen.findByText(/最近一筆較早菜單的供應商已停用/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '帶入最新較早菜單' })).not.toBeInTheDocument();
+    await screen.findByRole('heading', { name: `${today} 菜單` });
+    expect(screen.getByRole('textbox', { name: '菜單名稱' })).toHaveValue('既有菜單');
+    fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+    expect(await screen.findByText('上週沒有菜單')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('textbox', { name: '菜單名稱' })).toHaveValue('既有菜單');
     expect(repository.setDayMenu).not.toHaveBeenCalled();
   });
 

@@ -243,10 +243,6 @@ function sourceDay(id: string, menu: Record<string, unknown> | null = null) {
   return document(id, validDay(id, { menu }));
 }
 
-function makeDateBefore(dayId: string, daysAgo: number): string {
-  return new Date(Date.parse(`${dayId}T00:00:00.000Z`) - daysAgo * 86_400_000).toISOString().slice(0, 10);
-}
-
 describe('cloud day/vendor repository mocked server reads', () => {
   beforeEach(beforeEachSetup);
   afterEach(() => vi.clearAllMocks());
@@ -328,92 +324,106 @@ describe('cloud day/vendor repository mocked server reads', () => {
     },
   );
 
-  it('scans across null-menu pages and reports the newest blocked vendor source without falling back', async () => {
-    const sourceDays = [
-      sourceDay('2026-10-15'),
-      sourceDay('2026-10-14'),
-      sourceDay('2026-10-13', validMenu('2026-10-13', 'vendor-inactive', 'Vendor vendor-inactive')),
-      sourceDay('2026-10-12', validMenu('2026-10-12', 'vendor-active', 'Vendor vendor-active')),
-    ];
-    setupReadMocks({
-      vendors: [
-        document('vendor-active', validVendor('vendor-active')),
-        document('vendor-inactive', validVendor('vendor-inactive', { status: 'inactive' })),
-      ],
-      sourceDays,
-    });
-
-    const result = await repo(2).loadSnapshot('2026-10-16');
-
-    expect(result.latestEarlierMenu).toMatchObject({
-      sourceDayId: '2026-10-13',
-      blocked: 'vendor-inactive',
-      sourceVendor: { vendorId: 'vendor-inactive', status: 'inactive' },
-    });
-    const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
-      .filter(([request]) => (request as MockQuery).collection.path === 'days');
-    expect(sourceReads).toHaveLength(3);
-  });
-
-  it('walks older calendar windows to the newest sparse source without a descending key scan', async () => {
-    const sourceDays = [
-      sourceDay('2026-10-01'),
-      sourceDay('2026-08-20'),
-      sourceDay('2024-03-05', validMenu('2024-03-05', 'vendor-active', 'Vendor vendor-active')),
-      sourceDay('2023-01-01', validMenu('2023-01-01', 'vendor-active', 'Vendor vendor-active')),
-    ];
-    setupReadMocks({ vendors: [document('vendor-active', validVendor('vendor-active'))], sourceDays });
-
-    const result = await repo().loadSnapshot('2026-10-16');
-
-    expect(result.latestEarlierMenu).toMatchObject({ sourceDayId: '2024-03-05', blocked: null });
-    const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
-      .map(([request]) => request as MockQuery)
-      .filter(request => request.collection.path === 'days');
-    expect(sourceReads.every(request => request.constraints.every(item => item.type !== 'orderBy' || item.direction === undefined)))
-      .toBe(true);
-  });
-
-  it('fails closed on a malformed source-day row that is newer than the first menu', async () => {
+  it('does not scan earlier days when a snapshot loads: only the target day document and the vendors are read', async () => {
     setupReadMocks({
       vendors: [document('vendor-active', validVendor('vendor-active'))],
-      sourceDays: [
-        document('2026-10-14', { ...validDay('2026-10-14'), totals: null }),
-        sourceDay('2026-10-13', validMenu('2026-10-13', 'vendor-active', 'Vendor vendor-active')),
-      ],
+      sourceDays: [sourceDay('2026-10-14', validMenu('2026-10-14', 'vendor-active', 'Vendor vendor-active'))],
     });
-
-    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
-  });
-
-  it('probes beyond exactly 2,000 null-menu day documents to confirm exhaustion', async () => {
-    const sourceDays = Array.from({ length: 2_000 }, (_, index) => {
-      const id = makeDateBefore('2026-10-16', index + 1);
-      return sourceDay(id);
-    });
-    setupReadMocks({ sourceDays });
 
     const result = await repo().loadSnapshot('2026-10-16');
 
-    expect(result.latestEarlierMenu).toBeNull();
-    const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
-      .map(([request]) => request as MockQuery)
-      .filter(request => request.collection.path === 'days');
-    expect(sourceReads).toHaveLength(20);
-    expect(sourceReads.at(-1)?.constraints).toContainEqual({ type: 'limit', count: 1 });
+    expect(result).not.toHaveProperty('latestEarlierMenu');
+    const dayCollectionReads = firestoreMocks.getDocsFromServer.mock.calls
+      .filter(([request]) => (request as MockQuery).collection.path === 'days');
+    expect(dayCollectionReads).toHaveLength(0);
   });
 
-  it('returns INCOMPLETE_SNAPSHOT when a 2,001st source-day probe finds more null-menu documents', async () => {
-    const sourceDays = Array.from({ length: 2_001 }, (_, index) => {
-      const id = makeDateBefore('2026-10-16', index + 1);
-      return sourceDay(id);
+  describe('readLastWeekMenus (#686): the previous calendar week Monday to Friday, read on demand', () => {
+    const vendors = [
+      { vendorId: 'vendor-a', name: '供應商A', status: 'active', deleted: false },
+      { vendorId: 'vendor-off', name: '停用供應商', status: 'inactive', deleted: false },
+      { vendorId: 'vendor-gone', name: '已移除供應商', status: 'active', deleted: true },
+    ] as Parameters<ReturnType<typeof repo>['readLastWeekMenus']>[1];
+    const menuOf = (dayId: string, vendorId: string, itemName: string, price = 90) => ({
+      ...validMenu(dayId, vendorId, 'snapshot name'), itemName, price,
     });
-    setupReadMocks({ sourceDays });
+    const weekDays = () => [
+      sourceDay('2026-11-02', menuOf('2026-11-02', 'vendor-a', '雞腿便當')),
+      sourceDay('2026-11-03', menuOf('2026-11-03', 'vendor-a', '雞腿便當')),
+      sourceDay('2026-11-04', menuOf('2026-11-04', 'vendor-off', '停用便當')),
+      sourceDay('2026-11-05', menuOf('2026-11-05', 'vendor-gone', '已移除便當')),
+      sourceDay('2026-11-06', null),
+      sourceDay('2026-10-30', menuOf('2026-10-30', 'vendor-a', '更早便當')),
+      sourceDay('2026-11-09', menuOf('2026-11-09', 'vendor-a', '同一週便當')),
+    ];
+    const dayQueries = () => firestoreMocks.getDocsFromServer.mock.calls
+      .map(([request]) => request as MockQuery)
+      .filter(request => request.collection.path === 'days');
 
-    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
-    const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
-      .filter(([request]) => (request as MockQuery).collection.path === 'days');
-    expect(sourceReads).toHaveLength(20);
+    it.each([
+      ['a Thursday', '2026-11-12'],
+      ['the Monday itself', '2026-11-09'],
+      ['a Friday', '2026-11-13'],
+      ['a Sunday (the week still starts on Monday 11-09)', '2026-11-15'],
+    ])('reads 11-02 to 11-06 for %s, with limit 5 and an ascending document-ID range', async (_label, target) => {
+      setupReadMocks({ sourceDays: weekDays() });
+
+      const items = await repo().readLastWeekMenus(target, vendors);
+
+      const queries = dayQueries();
+      expect(queries).toHaveLength(1);
+      expect(queries[0]!.constraints).toEqual(expect.arrayContaining([
+        { type: 'where', field: '__document_id__', op: '>=', value: '2026-11-02' },
+        { type: 'where', field: '__document_id__', op: '<=', value: '2026-11-06' },
+        { type: 'orderBy', field: '__document_id__', direction: undefined },
+        { type: 'limit', count: 5 },
+      ]));
+      expect(items.map(item => item.dayId)).toEqual(['2026-11-02', '2026-11-03']);
+    });
+
+    it('lists each day separately without merging identical menus, and skips inactive, removed or menu-less days', async () => {
+      setupReadMocks({ sourceDays: weekDays() });
+
+      const items = await repo().readLastWeekMenus('2026-11-12', vendors);
+
+      expect(items).toEqual([
+        { dayId: '2026-11-02', itemName: '雞腿便當', price: 90, vendorId: 'vendor-a', vendorName: '供應商A' },
+        { dayId: '2026-11-03', itemName: '雞腿便當', price: 90, vendorId: 'vendor-a', vendorName: '供應商A' },
+      ]);
+    });
+
+    it('returns an empty list when last week has no usable menu and never looks further back', async () => {
+      setupReadMocks({ sourceDays: [sourceDay('2026-10-30', menuOf('2026-10-30', 'vendor-a', '更早便當'))] });
+
+      expect(await repo().readLastWeekMenus('2026-11-12', vendors)).toEqual([]);
+      expect(dayQueries()).toHaveLength(1);
+    });
+
+    it('computes the week from the date string, not from the browser clock or time zone', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2030-01-01T00:00:00.000Z'));
+      try {
+        setupReadMocks({ sourceDays: weekDays() });
+        const items = await repo().readLastWeekMenus('2026-11-12', vendors);
+        expect(items).toHaveLength(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('fails closed on a malformed day row in the range', async () => {
+      setupReadMocks({
+        sourceDays: [document('2026-11-03', { ...validDay('2026-11-03'), totals: null })],
+      });
+
+      await expect(repo().readLastWeekMenus('2026-11-12', vendors)).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    });
+
+    it('rejects an invalid date before reading anything', async () => {
+      setupReadMocks();
+      await expect(repo().readLastWeekMenus('2026-13-45', vendors)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+      expect(dayQueries()).toHaveLength(0);
+    });
   });
 
   it.each([

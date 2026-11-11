@@ -181,21 +181,6 @@ async function seedVendors(count: number, options: { tombstones?: boolean } = {}
   });
 }
 
-async function seedDays(count: number, options: { menuAt?: number; menu?: Record<string, unknown> } = {}) {
-  await withAdmin(async db => {
-    for (let offset = 0; offset < count; offset += 450) {
-      const batch = writeBatch(db);
-      const end = Math.min(offset + 450, count);
-      for (let index = offset; index < end; index += 1) {
-        const dayId = shiftDate(selectionDate, -index - 1);
-        const menu = index === options.menuAt ? { ...options.menu } : null;
-        batch.set(doc(db, `days/${dayId}`), dayDocument(index + 1, menu));
-      }
-      await batch.commit();
-    }
-  });
-}
-
 describeWithEmulator('P07 server-only day/vendor repository reads and production Rules', () => {
   beforeAll(async () => {
     env = await initializeTestEnvironment({
@@ -224,7 +209,6 @@ describeWithEmulator('P07 server-only day/vendor repository reads and production
       selectionDate,
       day: null,
       vendors: [],
-      latestEarlierMenu: null,
       seq: 0,
       datasetId: 'p07-synthetic-day-vendor-dataset',
       goLiveDate: shiftDate(selectionDate, -30),
@@ -269,74 +253,62 @@ describeWithEmulator('P07 server-only day/vendor repository reads and production
     });
   });
 
-  it('pages across null menus and reports the immediate newest source as blocked without falling back', async () => {
-    const olderMenuDay = shiftDate(selectionDate, -8);
-    const newestMenuDay = shiftDate(selectionDate, -5);
-    await withAdmin(async db => {
-      await setDoc(doc(db, 'vendors/active-source-vendor'), vendorDocument('active-source-vendor', 1, { name: 'Active Source' }));
-      await setDoc(doc(db, 'vendors/inactive-source-vendor'), vendorDocument('inactive-source-vendor', 2, { name: 'Inactive Source', status: 'inactive' }));
-      for (let index = 0; index < 8; index += 1) {
-        const dayId = shiftDate(selectionDate, -index - 1);
-        const menu = dayId === olderMenuDay
-          ? menuDocument(dayId, { vendorId: 'active-source-vendor', vendorNameSnapshot: 'Active Source' })
-          : dayId === newestMenuDay
-            ? menuDocument(dayId, { vendorId: 'inactive-source-vendor', vendorNameSnapshot: 'Inactive Source' })
-            : null;
-        await setDoc(doc(db, `days/${dayId}`), dayDocument(index + 1, menu));
-      }
+  describe('#686 last-week menu read under production Rules', () => {
+    const week = {
+      target: '2026-11-12',
+      mon: '2026-11-02', tue: '2026-11-03', wed: '2026-11-04', thu: '2026-11-05',
+    };
+    const vendorRows = () => [
+      { vendorId: 'week-vendor', name: 'Week Vendor', status: 'active', deleted: false },
+      { vendorId: 'off-vendor', name: 'Off Vendor', status: 'inactive', deleted: false },
+    ] as Parameters<ReturnType<typeof repository>['readLastWeekMenus']>[1];
+
+    async function seedWeek() {
+      await withAdmin(async db => {
+        await setDoc(doc(db, 'vendors/week-vendor'), vendorDocument('week-vendor', 1, { name: 'Week Vendor' }));
+        await setDoc(doc(db, 'vendors/off-vendor'), vendorDocument('off-vendor', 2, { name: 'Off Vendor', status: 'inactive' }));
+        const menu = (dayId: string, vendorId: string, vendorNameSnapshot: string) => menuDocument(dayId, {
+          vendorId, vendorNameSnapshot, itemName: 'Same Bento', price: 90,
+        });
+        await setDoc(doc(db, `days/${week.mon}`), dayDocument(1, menu(week.mon, 'week-vendor', 'Week Vendor')));
+        await setDoc(doc(db, `days/${week.tue}`), dayDocument(2, menu(week.tue, 'week-vendor', 'Week Vendor')));
+        await setDoc(doc(db, `days/${week.wed}`), dayDocument(3, menu(week.wed, 'off-vendor', 'Off Vendor')));
+        await setDoc(doc(db, `days/${week.thu}`), dayDocument(4, null));
+        // Outside the previous calendar week: a week earlier and the target's own week.
+        await setDoc(doc(db, 'days/2026-10-29'), dayDocument(5, menu('2026-10-29', 'week-vendor', 'Week Vendor')));
+        await setDoc(doc(db, 'days/2026-11-10'), dayDocument(6, menu('2026-11-10', 'week-vendor', 'Week Vendor')));
+      });
+    }
+
+    it('lets the current holder read the previous Monday-to-Friday range with limit 5 and lists each day separately', async () => {
+      await seedWeek();
+      const items = await repository(operatorA).readLastWeekMenus(week.target, vendorRows());
+      expect(items).toEqual([
+        { dayId: week.mon, itemName: 'Same Bento', price: 90, vendorId: 'week-vendor', vendorName: 'Week Vendor' },
+        { dayId: week.tue, itemName: 'Same Bento', price: 90, vendorId: 'week-vendor', vendorName: 'Week Vendor' },
+      ]);
     });
-    const result = await repository(operatorA, 2).loadSnapshot(targetDate);
-    expect(result.latestEarlierMenu).toMatchObject({
-      sourceDayId: newestMenuDay,
-      menu: { vendorId: 'inactive-source-vendor', vendorNameSnapshot: 'Inactive Source' },
-      sourceVendor: { status: 'inactive', deleted: false },
-      blocked: 'vendor-inactive',
+
+    it('returns an empty list for a week with no menu', async () => {
+      await withAdmin(db => setDoc(doc(db, 'days/2026-10-29'), dayDocument(1, null)));
+      expect(await repository(operatorA).readLastWeekMenus(week.target, vendorRows())).toEqual([]);
     });
-    expect(result.latestEarlierMenu?.sourceDayId).not.toBe(olderMenuDay);
+
+    it('is refused by Rules for an approved operator who does not hold the lease', async () => {
+      await seedWeek();
+      await expect(repository(operatorB).readLastWeekMenus(week.target, vendorRows())).rejects.toMatchObject({
+        name: 'CloudDayVendorRepositoryError',
+      });
+    });
+
+    it('does not make the day snapshot read any earlier day documents', async () => {
+      await seedWeek();
+      await withAdmin(db => setDoc(doc(db, `days/${targetDate}`), dayDocument(9)));
+      const result = await repository(operatorA).loadSnapshot(targetDate);
+      expect(result).not.toHaveProperty('latestEarlierMenu');
+      expect(result.day?.dayId).toBe(targetDate);
+    });
   });
-
-  it('finds a sparse source across empty calendar gaps and ignores an older menu', async () => {
-    await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), {
-      goLiveDate: shiftDate(selectionDate, -3_000),
-    }));
-    const nullDay = shiftDate(selectionDate, -3);
-    const sparseSource = shiftDate(selectionDate, -900);
-    const olderSource = shiftDate(selectionDate, -1_500);
-    await withAdmin(async db => {
-      await setDoc(doc(db, 'vendors/active-source-vendor'), vendorDocument('active-source-vendor', 1, { name: 'Active Source' }));
-      await setDoc(doc(db, `days/${nullDay}`), dayDocument(1));
-      await setDoc(doc(db, `days/${sparseSource}`), dayDocument(2, menuDocument(sparseSource, {
-        vendorId: 'active-source-vendor', vendorNameSnapshot: 'Active Source', itemName: 'Sparse Source',
-      })));
-      await setDoc(doc(db, `days/${olderSource}`), dayDocument(3, menuDocument(olderSource, {
-        vendorId: 'active-source-vendor', vendorNameSnapshot: 'Active Source', itemName: 'Older Source',
-      })));
-    });
-    const result = await repository(operatorA, 2).loadSnapshot(targetDate);
-    expect(result.latestEarlierMenu).toMatchObject({
-      sourceDayId: sparseSource,
-      menu: { itemName: 'Sparse Source' },
-      blocked: null,
-    });
-  });
-
-  it('probes beyond exactly 2,000 empty source days and rejects an additional physical day', async () => {
-    await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), {
-      goLiveDate: shiftDate(selectionDate, -3_000),
-    }));
-    await seedDays(2_000);
-    const exact = await repository(operatorA, 200).loadSnapshot(targetDate);
-    expect(exact.latestEarlierMenu).toBeNull();
-
-    await withAdmin(async db => {
-      const extraDate = shiftDate(selectionDate, -2_001);
-      await setDoc(doc(db, `days/${extraDate}`), dayDocument(2_001));
-    });
-    await expect(repository(operatorA, 200).loadSnapshot(targetDate)).rejects.toMatchObject({
-      name: 'CloudDayVendorRepositoryError', code: 'INCOMPLETE_SNAPSHOT',
-    });
-    // Seeding 2,001 physical days plus two complete scans exceeds the 5s default on cold runners.
-  }, 60_000);
 
   it('uses server reads and distinguishes an offline state from a successful empty result', async () => {
     const db = authedDb(operatorA);
