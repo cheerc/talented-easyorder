@@ -41,6 +41,8 @@ import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
 import { cloudPendingJournalForRepository, type PendingCommandIdentity } from '../../firebase/cloudPendingJournal';
+import { CloudAccountBalance } from './CloudAccountBalance';
+import { formatAccountBalance, formatAccountBalanceText } from './accountBalance';
 import './CloudOrdersPage.css';
 
 export interface CloudOrdersPageProps {
@@ -463,7 +465,7 @@ function previewMutation(
     const effect = mutationCashEffect(mutation.kind, tx, after);
     const balanceAfter = student ? student.currentBalance - studentContribution(tx) + studentContribution(after) : null;
     if (tx.type === 'refund' && balanceAfter !== null && balanceAfter < 0) {
-      return { error: `退款更正後帳戶餘額會變成 $${balanceAfter}，不能是負數` };
+      return { error: `退款更正後帳戶餘額會變成 ${formatAccountBalanceText(balanceAfter)}，不能是負數` };
     }
     return { cashDelta: effect.delta, reasonKind: effect.reasonKind, balanceBefore: student?.currentBalance ?? null, balanceAfter };
   } catch (error) {
@@ -1876,7 +1878,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             <span>
               送錯了？可撤回 {page.undoOffer.label}
               {undoPreview && !('error' in undoPreview) && `：現金 ${signedMoney(undoPreview.cashDelta)}`}
-              {undoPreview && !('error' in undoPreview) && undoPreview.balanceAfter !== null && `，餘額回到 $${undoPreview.balanceAfter}`}
+              {undoPreview && !('error' in undoPreview) && undoPreview.balanceAfter !== null && `，餘額回到 ${formatAccountBalanceText(undoPreview.balanceAfter)}`}
             </span>
             <Button
               variant="ghost"
@@ -1987,7 +1989,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                               <strong className="mono">{student.studentCode}</strong> {student.displayName}
                               {student.status === 'inactive' && <span className="cloud-orders__student-badge">已停用</span>}
                             </span>
-                            <span className="cloud-orders__search-item-balance mono">{student.currentBalance < 0 ? `−$${Math.abs(student.currentBalance)} 欠款` : `結餘 $${student.currentBalance}`}</span>
+                            <span className="cloud-orders__search-item-balance mono">{student.currentBalance < 0 ? formatAccountBalanceText(student.currentBalance) : `結餘 ${formatAccountBalance(student.currentBalance)}`}</span>
                           </li>
                         ))}
                       </ul>
@@ -2170,11 +2172,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </div>
                     <div className="cloud-orders__selected-balance">
                       <span className="cloud-orders__field-label">目前餘額：</span>
-                      <span className={`cloud-orders__money mono${selectedStudent.currentBalance < 0 ? ' cloud-orders__debt' : ''}`}>
-                        {selectedStudent.currentBalance < 0
-                          ? `−$${Math.abs(selectedStudent.currentBalance)}`
-                          : `$${selectedStudent.currentBalance}`}
-                        {selectedStudent.currentBalance < 0 && <span className="cloud-orders__debt"> 欠款</span>}
+                      <span className="cloud-orders__money mono">
+                        <CloudAccountBalance amount={selectedStudent.currentBalance} />
                       </span>
                     </div>
                       <Button variant="ghost" size="sm" onClick={cancelSelection} disabled={busy}>
@@ -2243,14 +2242,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     )}
                     <div className="cloud-orders__checkout">
                       <dl className="cloud-orders__breakdown" data-testid="order-preview" aria-label="結帳明細">
-                        <div className="cloud-orders__breakdown-row">
-                          <dt>目前餘額</dt>
-                          <dd className={`mono${selectedStudent.currentBalance < 0 ? ' cloud-orders__debt' : ''}`}>
-                            {selectedStudent.currentBalance < 0
-                              ? `−$${Math.abs(selectedStudent.currentBalance)} 欠款`
-                              : `$${selectedStudent.currentBalance}`}
-                          </dd>
-                        </div>
                         {mode !== 'payment' && (
                           <div className="cloud-orders__breakdown-row">
                             <dt>{mode === 'bento' ? '今日餐點' : '其他餐點'}</dt>
@@ -2267,12 +2258,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         </div>
                         <div className="cloud-orders__breakdown-row cloud-orders__breakdown-row--total">
                           <dt>預計結餘</dt>
-                          <dd className={`mono${previewBalance !== null && previewBalance < 0 ? ' cloud-orders__debt' : ''}`}>
-                            {previewBalance === null ? '—'
-                              : previewBalance < 0 ? `−$${Math.abs(previewBalance)}` : `$${previewBalance}`}
-                            {previewBalance !== null && previewBalance < 0 && (
-                              <span className="cloud-orders__debt">（欠款 ${Math.abs(previewBalance)}）</span>
-                            )}
+                          <dd className="mono">
+                            {previewBalance === null ? '—' : <CloudAccountBalance amount={previewBalance} />}
                           </dd>
                         </div>
                       </dl>
@@ -2360,7 +2347,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                 <form onSubmit={requestRefund} aria-label="退款">
                   <h3>退款</h3>
                   <p className="cloud-orders__muted">
-                    從帳戶餘額退還現金給學生，會從今日應有現金扣除。目前餘額 ${selectedStudent.currentBalance}。
+                    從帳戶餘額退還現金給學生，會從今日應有現金扣除。目前餘額 {formatAccountBalanceText(selectedStudent.currentBalance)}。
                   </p>
                   {selectedStudent.currentBalance < 1 && (
                     <p className="cloud-orders__error" data-testid="refund-no-balance">帳戶餘額不是正數，沒有可退的金額。</p>
@@ -2681,7 +2668,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                   <>
                     <span>現金影響：{signedMoney(editPreview.cashDelta)}{REASON_KIND_TEXT[editPreview.reasonKind] ?? ''}</span>
                     {editPreview.balanceAfter !== null && (
-                      <span>帳戶餘額：${editPreview.balanceBefore} → ${editPreview.balanceAfter}</span>
+                      <span>帳戶餘額：{editPreview.balanceBefore === null ? '—' : formatAccountBalanceText(editPreview.balanceBefore)} → {formatAccountBalanceText(editPreview.balanceAfter)}</span>
                     )}
                     {page.edit.action === 'void' && editPreview.cashDelta !== 0 && (
                       <span data-testid="void-ledger-warning">
@@ -2760,7 +2747,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               <span>今日餐費：${selectedTransactions.reduce((sum, tx) => sum + tx.mealPrice, 0)}</span>
               <span>今日收款：${selectedTransactions.reduce((sum, tx) => sum + tx.paidAmount, 0)}</span>
               <span>今日退款：${selectedTransactions.reduce((sum, tx) => sum + (tx.type === 'refund' ? tx.amount : 0), 0)}</span>
-              <span>帳戶餘額：${selectedStudent.currentBalance}</span>
+              <span>帳戶餘額：{formatAccountBalanceText(selectedStudent.currentBalance)}</span>
             </div>
             <div className="cloud-orders__actions">
               <Button

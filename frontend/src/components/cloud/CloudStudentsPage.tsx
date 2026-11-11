@@ -19,7 +19,7 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
-import { formatAccountBalance } from './accountBalance';
+import { formatAccountBalanceText } from './accountBalance';
 import './CloudStudentsPage.css';
 
 export interface CloudStudentsPageProps {
@@ -346,10 +346,6 @@ function isAuthorizationLoss(error: unknown): boolean {
   return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error));
 }
 
-function formatBalance(amount: number): string {
-  return formatAccountBalance(amount);
-}
-
 function parseOpeningAmount(text: string): number | null {
   if (!/^-?\d+$/.test(text)) return null;
   const amount = Number(text);
@@ -362,7 +358,7 @@ function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'edit') return `修改 ${command.studentCode}`;
   if (command.kind === 'code') return `改編號 ${command.studentCode} → ${command.newStudentCode}`;
   if (command.kind === 'opening-day') return `建立期初日營業日 ${command.dayId}（${command.studentCode} 期初更正前置）`;
-  if (command.kind === 'opening') return `更正 ${command.studentCode} 期初為 ${formatBalance(command.amount)}${command.amount < 0 ? '（欠款）' : ''}`;
+  if (command.kind === 'opening') return `更正 ${command.studentCode} 期初為 ${formatAccountBalanceText(command.amount)}`;
   return command.status === 'inactive' ? `停用 ${command.studentCode}` : `恢復 ${command.studentCode}`;
 }
 

@@ -285,4 +285,15 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
   it('CloudOrdersPage.css 的原生 select 繼承容器字級（切換營業日），與其他雲端頁一致', () => {
     expect(readCss('CloudOrdersPage.css')).toMatch(/\.cloud-orders select\s*\{[^}]*font:\s*inherit/);
   });
+
+  it('F1 結帳明細的標籤不斷行、不被金額擠壓（#687：預計結餘）', () => {
+    const rule = ruleBody(readCss('CloudOrdersPage.css'), '.cloud-orders__breakdown-row dt');
+    expect(rule).toMatch(/white-space:\s*nowrap/);
+    expect(rule).toMatch(/flex-shrink:\s*0/);
+  });
+
+  it('欠款字樣用警示色（#687：取代各頁自己的 badge 與 inline 寫法）', () => {
+    const css = readFileSync(resolve(CLOUD_DIR, '../ui/StatusBadge.css'), 'utf8');
+    expect(ruleBody(css, '.cloud-account-balance__debt')).toMatch(/color:\s*var\(--warn\)/);
+  });
 });

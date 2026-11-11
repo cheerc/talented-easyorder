@@ -913,7 +913,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
         expect(balanceAfterExpected).toBeLessThan(0);
         const expectedBalanceText = `−$${new Intl.NumberFormat('zh-TW').format(Math.abs(balanceAfterExpected))}`;
         await expect(accountBalanceCell.locator('.cloud-account-balance__amount')).toHaveText(expectedBalanceText, { timeout: 30_000 });
-        await expect(accountBalanceCell.getByText('欠款')).toHaveClass(/badge-ui.*badge-warn/);
+        await expect(accountBalanceCell.getByText('欠款')).toHaveClass(/cloud-account-balance__debt/);
         const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
         expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
         await expect(activeHistoricalRow).toContainText('105');

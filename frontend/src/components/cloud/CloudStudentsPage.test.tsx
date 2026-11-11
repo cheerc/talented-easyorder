@@ -190,18 +190,22 @@ describe('CloudStudentsPage', () => {
     renderPage();
 
     const debtRow = await screen.findByTestId('cloud-student-row-201');
-    expect(debtRow).toHaveTextContent('−NT$ 40');
-    expect(debtRow.querySelector('.cloud-students__balance .cloud-account-balance__debt')).toHaveClass('badge-ui', 'badge-warn');
+    expect(debtRow.querySelector('.cloud-students__balance')).toHaveTextContent('−$40 欠款');
+    expect(debtRow.querySelector('.cloud-students__balance .cloud-account-balance__debt')).toHaveTextContent('欠款');
+    expect(debtRow.querySelector('.cloud-students__balance .badge-ui')).toBeNull();
+    expect(debtRow).not.toHaveTextContent('NT$');
     fireEvent.click(within(debtRow).getByText('查看期初資料'));
-    expect(debtRow).toHaveTextContent('−NT$ 20');
+    expect(debtRow).toHaveTextContent('期初結餘−$20 欠款');
     expect(within(debtRow).getAllByText('欠款')).toHaveLength(2);
 
     const positiveRow = screen.getByTestId('cloud-student-row-202');
-    expect(positiveRow).toHaveTextContent('NT$ 15');
+    expect(positiveRow).toHaveTextContent('$15');
+    expect(positiveRow).not.toHaveTextContent('NT$');
     expect(within(positiveRow).queryByText('欠款')).toBeNull();
     expect(within(positiveRow).getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
     const zeroRow = screen.getByTestId('cloud-student-row-203');
-    expect(zeroRow).toHaveTextContent('NT$ 0');
+    expect(zeroRow).toHaveTextContent('$0');
+    expect(zeroRow).not.toHaveTextContent('NT$');
     expect(within(zeroRow).queryByText('欠款')).toBeNull();
     expect(within(zeroRow).getByText('已停用')).toHaveClass('badge-ui', 'badge-neutral');
   });
@@ -807,8 +811,9 @@ describe('CloudStudentsPage', () => {
     fireEvent.change(within(form).getByLabelText(/期初結餘/), { target: { value: '80' } });
     fireEvent.change(within(form).getByLabelText(/期初備註/), { target: { value: '核對後' } });
     const preview = within(form).getByLabelText('期初更正預覽');
-    expect(preview).toHaveTextContent(/期初\s*NT\$ 100 → NT\$ 80/);
-    expect(preview).toHaveTextContent(/目前結餘\s*NT\$ 250 → NT\$ 230/);
+    expect(preview).toHaveTextContent(/期初\s*\$100 → \$80/);
+    expect(preview).toHaveTextContent(/目前結餘\s*\$250 → \$230/);
+    expect(preview).not.toHaveTextContent('NT$');
     fireEvent.click(within(form).getByRole('button', { name: '確認更正期初' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('請輸入具體的期初更正原因');
     expect(repository.correctOpening).not.toHaveBeenCalled();

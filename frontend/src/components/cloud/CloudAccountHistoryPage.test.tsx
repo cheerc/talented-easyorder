@@ -185,11 +185,12 @@ describe('CloudAccountHistoryPage', () => {
 
     await screen.findByTestId('account-history-ready');
     const balance = screen.getByText('目前帳戶餘額').nextElementSibling as HTMLElement;
-    expect(balance).toHaveTextContent('−$40');
-    expect(within(balance).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(balance).toHaveTextContent('−$40 欠款');
+    expect(within(balance).getByText('欠款')).toHaveClass('cloud-account-balance__debt');
+    expect(balance.querySelector('.badge-ui')).toBeNull();
     const opening = screen.getByText('期初餘額').nextElementSibling as HTMLElement;
-    expect(opening).toHaveTextContent('−$20');
-    expect(within(opening).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(opening).toHaveTextContent('−$20 欠款');
+    expect(within(opening).getByText('欠款')).toHaveClass('cloud-account-balance__debt');
     expect(screen.getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
 
     const transactionSection = screen.getByRole('heading', { name: '區間交易與更正入口' }).closest('section') as HTMLElement;
@@ -197,7 +198,8 @@ describe('CloudAccountHistoryPage', () => {
     const cells = within(row).getAllByRole('cell');
     expect(cells[3]).toHaveTextContent('−$35');
     expect(cells[3].querySelector('.badge-warn')).toBeNull();
-    expect(within(cells[4]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(cells[4]).toHaveTextContent('−$40 欠款');
+    expect(within(cells[4]).getByText('欠款')).toHaveClass('cloud-account-balance__debt');
     expect(within(cells[5]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
     expect(within(cells[6]).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
     const settlementSection = screen.getByRole('heading', { name: /日結版本/ }).closest('section') as HTMLElement;
