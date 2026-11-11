@@ -321,7 +321,7 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
     await expect(page.locator('.operator-strip')).toBeVisible();
     const nav = page.getByRole('navigation', { name: '主要導覽' });
 
-    // 櫃台：「異常 N」按鈕、切換營業日 select 與開啟的操作員選單。
+    // 櫃台：「異常 N」按鈕、營業日 select 與開啟的操作員選單。
     await nav.getByRole('button', { name: '櫃台', exact: true }).click();
     await expect(page.getByRole('button', { name: /^異常 \d+/ })).toBeVisible();
     await expect(page.getByTestId('orders-day-select')).toBeVisible();

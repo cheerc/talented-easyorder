@@ -104,7 +104,7 @@ test.describe('具名業務情境 fixtures', () => {
         const menuName = main.getByLabel('菜單名稱');
         await expect(menuName).toHaveValue(scenario.menuName);
         await menuName.fill('合成未送出菜單');
-        const date = main.getByLabel('查看或設定日期');
+        const date = main.getByLabel('營業日', { exact: true });
         await date.fill(nextDay);
         const dialog = page.getByRole('dialog', { name: '捨棄草稿？' });
         await expect(dialog).toBeVisible();

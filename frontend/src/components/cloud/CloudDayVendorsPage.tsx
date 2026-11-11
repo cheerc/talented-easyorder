@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
 import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -25,6 +25,7 @@ import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { Callout } from '../ui/Callout';
 import { CommandProgress } from '../ui/CommandProgress';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { DateField } from '../ui/DateField';
 import { EmptyState } from '../ui/EmptyState';
 import { HelpTip } from '../ui/HelpTip';
 import { StatusBadge } from '../ui/StatusBadge';
@@ -944,9 +945,8 @@ export function CloudDayVendorsPage({
     return null;
   };
 
-  // 改日期即載入（#651）：完整合法日期（≥ 系統啟用日）才讀取；鍵盤逐字輸入時等 Enter 或離開欄位才確認。
+  // 改日期即載入（#651）：完整合法日期（≥ 系統啟用日）才讀取；鍵盤逐字輸入時等 Enter 或離開欄位才確認（由 DateField 處理）。
   // 只採用最後一次讀取的結果由 loadSnapshot 的 listRequestRef 保證。
-  const typingDateRef = useRef(false);
   const [pendingDate, setPendingDate] = useState<string | null>(null);
   const hasUnsentDraft = (current: CloudDayVendorSnapshot): boolean => {
     const baseline = formDraftsFor(current);
@@ -976,22 +976,6 @@ export function CloudDayVendorsPage({
   };
   const onDateChange = (value: string) => {
     updatePage(previous => ({ ...previous, dayIdDraft: value, actionError: '' }));
-    if (typingDateRef.current) return;
-    requestDateLoad(value);
-  };
-  const onDateKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      if (event.repeat || event.nativeEvent.isComposing) return;
-      typingDateRef.current = false;
-      requestDateLoad(event.currentTarget.value);
-      return;
-    }
-    if (event.key !== 'Tab' && event.key !== 'Escape') typingDateRef.current = true;
-  };
-  const onDateBlur = (event: FocusEvent<HTMLInputElement>) => {
-    typingDateRef.current = false;
-    requestDateLoad(event.currentTarget.value);
   };
   const cancelPendingDate = () => {
     setPendingDate(null);
@@ -1381,37 +1365,28 @@ export function CloudDayVendorsPage({
 
       {snapshot && (!page.loading || showingStale) && (
         <div className="cloud-day-vendors__content" data-testid="cloud-day-vendors-content" inert={showingStale || undefined}>
-          {view !== 'vendors' && <><section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
-            <div className="cloud-day-vendors__date-form">
-              <label htmlFor="cloud-day-vendors-date">查看或設定日期</label>
-              <input
-                id="cloud-day-vendors-date"
-                className="cloud-day-vendors__input cloud-day-vendors__mono"
-                type="date"
-                min={snapshot.goLiveDate}
-                value={page.dayIdDraft || snapshot.dayId}
-                onChange={event => onDateChange(event.target.value)}
-                onKeyDown={onDateKeyDown}
-                onBlur={onDateBlur}
-                disabled={busy}
-                required
-              />
-              <HelpTip label="營業日說明">
-                營業日來自伺服器租約時間；瀏覽器時鐘不會決定營業日或改寫命令日期。{'\n'}改日期後會直接載入該日資料；有尚未送出的內容時會先詢問。
-              </HelpTip>
-              <div className="cloud-day-vendors__date-meta">
-                <span>系統啟用日：{snapshot.goLiveDate}</span>
-                <span>伺服器使用權日期：{snapshot.selectionDate}</span>
-              </div>
-            </div>
-            <Callout variant="info">若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</Callout>
-          </section>
+          {view !== 'vendors' && <><DateField
+            id="cloud-day-vendors-date"
+            variant="date"
+            min={snapshot.goLiveDate}
+            value={page.dayIdDraft || snapshot.dayId}
+            onChange={onDateChange}
+            onConfirm={requestDateLoad}
+            disabled={busy}
+            help={'改日期後會直接載入該日資料；有尚未送出的內容時會先詢問。'}
+            status={<>
+              {snapshot.day
+                ? <StatusBadge variant={dayStatusVariant(snapshot.day.status)} className={`cloud-day-vendors__day-status cloud-day-vendors__day-status--${snapshot.day.status}`}>{dayStatusLabel(snapshot.day.status)}</StatusBadge>
+                : <StatusBadge variant="neutral">尚未建立</StatusBadge>}
+              {snapshot.dayId === snapshot.selectionDate ? '今天' : snapshot.dayId < snapshot.selectionDate ? '過去日期' : '未來日期'}
+            </>}
+          />
 
           <section className="cloud-day-vendors__day-section" aria-label="指定營業日">
             <div className="cloud-day-vendors__section-heading">
               <div>
                 <h2>{snapshot.dayId} 營業日</h2>
-                <p>{snapshot.day ? <>狀態：<StatusBadge variant={dayStatusVariant(snapshot.day.status)} className={`cloud-day-vendors__day-status cloud-day-vendors__day-status--${snapshot.day.status}`}>{dayStatusLabel(snapshot.day.status)}</StatusBadge></> : '伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。'}</p>
+                {!snapshot.day && <p>伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。</p>}
               </div>
               {!snapshot.day && (
                 <button type="button" className="cloud-day-vendors__primary" onClick={submitEnsureDay} disabled={busy || snapshot.dayId < snapshot.goLiveDate}>

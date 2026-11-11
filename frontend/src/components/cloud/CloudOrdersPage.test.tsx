@@ -533,7 +533,7 @@ describe('CloudOrdersPage', () => {
   it('uses the server business date from the snapshot, not the browser clock (B4)', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ today: '2031-01-02', day: { ...mockDay(), dayId: '2031-01-02' } }));
     renderComponent();
-    expect(await screen.findByText('營業日：2031-01-02')).toBeVisible();
+    expect(await screen.findByLabelText('營業日')).toHaveTextContent('2031-01-02');
     await selectStudent('002');
     fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
     fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '水餃' } });
@@ -1403,6 +1403,23 @@ describe('CloudOrdersPage', () => {
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
+  it('shows the balance after a refund with the shared balance format, thousands included (#687 nit)', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: [mockStudent('s1', '001', '王小明', 1500), mockStudent('s2', '002', '李小華', 50)],
+      transactions: [],
+    }));
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.keyDown(window, { key: 'w' });
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    const card = await screen.findByTestId('refund-card');
+    fireEvent.change(screen.getByLabelText(/退款金額/), { target: { value: '200' } });
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '學期結束' } });
+    expect(card).toHaveTextContent('退款後餘額：$1,300');
+    fireEvent.click(screen.getByTestId('submit-refund-button'));
+    expect(await screen.findByTestId('refund-confirm-modal')).toHaveTextContent('退款後餘額 $1,300');
+  });
+
   it('P09b: refunds from the W panel after confirmation, defaulting to the full balance', async () => {
     renderComponent();
     await selectStudent('001');
@@ -1809,13 +1826,31 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     expect(screen.queryByTestId('backfill-tag-tx-1')).toBeNull();
   });
 
+  it('shows the business date once, as a read-only 營業日 control with a 今天 status, when there is nothing to switch to (#690)', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
+    const { container } = renderComponent();
+    await screen.findByTestId('cloud-topbar-bento');
+    const roots = container.querySelectorAll('.date-field-ui');
+    expect(roots).toHaveLength(1);
+    const control = screen.getByLabelText('營業日');
+    expect(control.tagName).not.toBe('SELECT');
+    expect(control).toHaveTextContent(TODAY);
+    expect(roots[0].querySelector('.date-field-ui__status')).toHaveTextContent('今天');
+    expect(screen.queryByText(/切換營業日/)).toBeNull();
+    expect(screen.queryByText(`營業日：${TODAY}`)).toBeNull();
+    expect((roots[0].textContent ?? '').split(TODAY)).toHaveLength(2);
+  });
+
   it('opens the day App asked for, shows a banner with the reason and tags only the rows entered later', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
     renderComponent('uid-1:1', GAP);
     const banner = await screen.findByTestId('backfill-banner');
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledWith({ dayId: GAP });
     expect(banner).toHaveTextContent(`正在回填 ${GAP}（原因：那天斷線）`);
-    expect(screen.getByText(`營業日：${GAP}`)).toBeVisible();
+    const field = screen.getByLabelText('營業日');
+    expect(field.tagName).toBe('SELECT');
+    expect(field).toHaveValue(GAP);
+    expect(field.closest('.date-field-ui')!.querySelector('.date-field-ui__status')).toHaveTextContent('回填中');
     await selectStudent('001');
     fireEvent.click(screen.getByTestId('open-payment-details-button'));
     expect(await screen.findByTestId('backfill-tag-tx-back')).toHaveTextContent('回填');
@@ -1828,6 +1863,8 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     ));
     renderComponent();
     const select = await screen.findByTestId('orders-day-select');
+    expect(select).toBe(screen.getByLabelText('營業日'));
+    expect(select.closest('.date-field-ui')!.querySelector('.date-field-ui__status')).toHaveTextContent('今天');
     expect(screen.queryByTestId('backfill-banner')).toBeNull();
     fireEvent.change(select, { target: { value: GAP } });
     expect(await screen.findByTestId('backfill-banner')).toBeVisible();
@@ -1836,7 +1873,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     fireEvent.click(screen.getByTestId('leave-backfill-button'));
     await waitFor(() => expect(screen.queryByTestId('backfill-banner')).toBeNull());
     expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: null });
-    expect(screen.getByText(`營業日：${TODAY}`)).toBeVisible();
+    expect(screen.getByLabelText('營業日')).toHaveValue('');
   });
 
   it('records an other-meal order on the backfilled day, and points to the menu setup when the day has none', async () => {

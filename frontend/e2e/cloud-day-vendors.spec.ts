@@ -141,7 +141,7 @@ test.describe('P07 Cloud day vendors', () => {
 
     const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
     await expect(main.getByRole('heading', { name: '菜單與開帳' })).toBeVisible();
-    const dateField = main.getByLabel('查看或設定日期');
+    const dateField = main.getByLabel('營業日', { exact: true });
     const businessDate = await dateField.inputValue();
     expect(businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -185,9 +185,9 @@ test.describe('P07 Cloud day vendors', () => {
 
     await settings(page, '菜單與開帳');
     const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-    await expect(main.getByLabel('查看或設定日期')).toHaveValue(today);
+    await expect(main.getByLabel('營業日', { exact: true })).toHaveValue(today);
 
-    const dateField = main.getByLabel('查看或設定日期');
+    const dateField = main.getByLabel('營業日', { exact: true });
     await dateField.fill(previousDate);
     await expect(main.getByRole('heading', { name: `${previousDate} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();

@@ -146,21 +146,6 @@
   min-width: 0;
 }
 
-/* 日期列：在最上，載入中也留著（鍵盤焦點不掉）。 */
-.cloud-day-close__datebar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s4);
-  padding: var(--s4) var(--s5);
-  border-radius: var(--r-lg);
-  background: var(--surface-sunken);
-}
-
-.cloud-day-close__datebar label {
-  font-weight: 600;
-}
-
 .cloud-day-close__input {
   display: block;
   width: 100%;
@@ -170,13 +155,6 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
-}
-
-.cloud-day-close__datebar .cloud-day-close__input {
-  width: auto;
-  min-height: 3rem;
-  font-family: var(--font-mono);
-  font-size: var(--t-lg);
 }
 
 .cloud-day-close__day-state {
@@ -410,14 +388,6 @@
     width: 100%;
   }
 
-  .cloud-day-close__datebar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .cloud-day-close__datebar .cloud-day-close__input {
-    width: 100%;
-  }
 }
 
 /* P11b close page additions. */

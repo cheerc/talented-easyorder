@@ -781,7 +781,7 @@ test.describe('P08 Cloud Orders', () => {
       await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       await expect(mainVendors.getByRole('heading', { name: '菜單與開帳' })).toBeVisible();
-      const dateField = mainVendors.getByLabel('查看或設定日期');
+      const dateField = mainVendors.getByLabel('營業日', { exact: true });
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
@@ -974,7 +974,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const today = taipeiToday();
       await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-      const dateField = mainVendors.getByLabel('查看或設定日期');
+      const dateField = mainVendors.getByLabel('營業日', { exact: true });
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
@@ -1095,7 +1095,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const today = taipeiToday();
       await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-      const dateField = mainVendors.getByLabel('查看或設定日期');
+      const dateField = mainVendors.getByLabel('營業日', { exact: true });
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
@@ -1193,7 +1193,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const today = taipeiToday();
       await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-      const dateField = mainVendors.getByLabel('查看或設定日期');
+      const dateField = mainVendors.getByLabel('營業日', { exact: true });
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
@@ -1415,7 +1415,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       if (!day || typeof day.openingCash !== 'number') {
         await settings(pageA, '菜單與開帳');
         const mainVendors = pageA.getByRole('main', { name: '雲端日期設定與供應商管理' });
-        const dateField = mainVendors.getByLabel('查看或設定日期');
+        const dateField = mainVendors.getByLabel('營業日', { exact: true });
         if ((await dateField.inputValue()) !== today) {
           await dateField.fill(today);
         }
@@ -1694,7 +1694,7 @@ test.describe('P11c2b Cloud Backfill', () => {
       await page.keyboard.press('Escape');
       await orders.getByTestId('leave-backfill-button').click();
       await expect(orders.getByTestId('backfill-banner')).toHaveCount(0);
-      await expect(orders.getByText(`營業日：${taipeiToday()}`)).toBeVisible();
+      await expect(orders.getByLabel('營業日', { exact: true })).toContainText(taipeiToday());
 
       await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
@@ -1798,7 +1798,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       for (const amount of ['60', '40']) {
         if (amount === '40') {
           await page.getByRole('button', { name: '今日帳', exact: true }).click();
-          await main.getByLabel('查看日期').fill(gap);
+          await main.getByLabel('營業日', { exact: true }).fill(gap);
           await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 40，不能關帳');
         }
         await main.getByTestId('backfill-align-orders').click();
@@ -1815,7 +1815,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
 
       // 5. 回到日結頁：差額 0，用預設的 970 關帳
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
-      await main.getByLabel('查看日期').fill(gap);
+      await main.getByLabel('營業日', { exact: true }).fill(gap);
       await expect(main.getByTestId('backfill-align-target')).toContainText('NT$ 970');
       await expect(main.getByTestId('backfill-align-gap')).toHaveCount(0);
       await main.getByRole('form', { name: `${gap} 關帳` }).getByRole('button', { name: '確認關帳' }).click();
@@ -1929,7 +1929,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
 
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
-      await main.getByLabel('查看日期').fill(previous);
+      await main.getByLabel('營業日', { exact: true }).fill(previous);
       await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
       await main.getByRole('button', { name: '重開這一天' }).click();
       const reopen = main.getByRole('form', { name: `${previous} 重開` });
