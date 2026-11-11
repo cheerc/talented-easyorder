@@ -275,7 +275,8 @@ export function AuthGate({
   // FirebaseProvider: a tab that was a confirmed holder re-acquires its own untouched expired lease once (#586 P2).
   if (!hasCurrentLease) {
     const isSameUidUnconfirmed = activeLease.holderUid === access.profile.uid;
-    const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired && !isSameUidUnconfirmed;
+    // Any other UID's lease needs the confirmation. `isExpired` is a local-clock estimate that only changes the wording.
+    const isOccupied = activeLease.holderUid !== null && !isSameUidUnconfirmed;
     const knownOccupant = occupant && occupant.epoch === activeLease.epoch && occupant.holderUid === activeLease.holderUid
       ? occupant.email : null;
     const occupantName = knownOccupant ?? '其他人';
@@ -298,7 +299,7 @@ export function AuthGate({
         ) : isOccupied ? (
           <div className="auth-gate-busy" aria-label="目前有人使用中">
             <h2>目前有人使用中</h2>
-            <p>目前由{occupantName}使用中。全公司同一時間僅限一位操作員使用。</p>
+            <p>{activeLease.isExpired ? `目前由${occupantName}使用，可能已閒置。` : `目前由${occupantName}使用中。`}全公司同一時間僅限一位操作員使用。</p>
             <p>若繼續登入，對方會立即被登出。</p>
 
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
@@ -314,7 +315,7 @@ export function AuthGate({
             <ConfirmDialog
               open={confirmTakeoverOpen}
               title="讓對方登出？"
-              message={`${occupantName} 正在使用。繼續登入會讓對方立即登出，對方尚未送出的操作不會保存。`}
+              message={`${occupantName} ${activeLease.isExpired ? '可能仍在使用' : '正在使用'}。繼續登入會讓對方立即登出，對方尚未送出的操作不會保存。`}
               confirmLabel="是，讓對方登出並繼續"
               cancelLabel="取消"
               variant="danger"
@@ -329,7 +330,7 @@ export function AuthGate({
         ) : (
           <div className="auth-gate-acquire" aria-label="待取得使用權">
             <h2>待取得使用權</h2>
-            <p>租約目前看起來閒置或可能已逾期。送出申請後，伺服器會依權威時間確認能否取得使用權。</p>
+            <p>目前沒有人使用。按下按鈕即可開始使用。</p>
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <button type="button" className="auth-gate-primary" onClick={() => void attemptAcquire()} disabled={isAcquiring}>

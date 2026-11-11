@@ -29,8 +29,8 @@ export interface KickedNotice {
 
 /**
  * `confirmedTakeoverEpoch`: the epoch of the occupied lease the operator was shown and explicitly agreed to take over.
- * Without it, a lease held by another UID is never taken over by this call (only observed), unless the lease already looks
- * expired. Rules stay the authority either way.
+ * Without it, a lease held by another UID is never taken over by this call (only observed). `isExpired` is a local-clock
+ * estimate and never lifts this: a fast clock would turn a live lease into a silent takeover. Rules stay the authority.
  */
 export interface AcquireLeaseOptions {
   confirmedTakeoverEpoch?: number;
@@ -431,9 +431,9 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     const currentConfirmed = observed.holderUid === uid && confirmedEpochRef.current === observed.epoch;
     publishLease({ ...observed, isHolder: currentConfirmed });
 
-    // #691: another UID's lease that does not look expired is taken over only with an explicit confirmation that names
-    // this very epoch. Otherwise (never confirmed, or the occupant changed after it was shown) only report what is there.
-    if (observed.holderUid !== null && observed.holderUid !== uid && !observed.isExpired
+    // #691: another UID's lease is taken over only with an explicit confirmation that names this very epoch, whatever the
+    // local clock says about expiry. Otherwise (never confirmed, or the occupant changed after it was shown) only report it.
+    if (observed.holderUid !== null && observed.holderUid !== uid
       && options.confirmedTakeoverEpoch !== observed.epoch) {
       confirmedEpochRef.current = null;
       return { status: 'busy', currentHolderUid: observed.holderUid, epoch: observed.epoch, updatedAt: observed.updatedAt ?? new Date(0) };
