@@ -1770,10 +1770,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               disabled={busy || page.loading}
               options={[
                 { value: '', label: `今天（${snapshot.today}）` },
-                ...snapshot.backfillDays.map(item => ({ value: item.dayId, label: `回填中 ${item.dayId}` })),
+                ...snapshot.backfillDays.map(item => ({ value: item.dayId, label: `補登中 ${item.dayId}` })),
               ]}
               onConfirm={value => void loadSnapshot({ dayId: value === '' ? null : value })}
-              status={backfillView ? '回填中' : '今天'}
+              status={backfillView ? '補登中' : '今天'}
             />
           ) : (
             <DateField
@@ -1786,7 +1786,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           )}
           {snapshot?.backfillDaysError && (
             <span className="cloud-orders__muted" data-testid="orders-backfill-list-error">
-              無法讀取回填中的日子清單（{snapshot.backfillDaysError}）；今天的作業不受影響。
+              無法讀取補登中的日子清單（{snapshot.backfillDaysError}）；今天的作業不受影響。
             </span>
           )}
         </div>
@@ -1811,11 +1811,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         </div>
       )}
 
+      {/* 畫面用語「補登」＝程式／資料中的 backfill（用語對照見日結契約開頭）；識別字與 testid 不改名。 */}
       {snapshot && backfill && (
         <div className="cloud-orders__backfill-banner" role="status" data-testid="backfill-banner">
-          <strong>正在回填 {backfill.dayId}（原因：{backfill.reason}）</strong>
+          <strong>正在補登 {backfill.dayId}</strong>
+          <small className="cloud-orders__backfill-reason">原因：{backfill.reason}</small>
           <span>
-            這裡補登的訂餐、繳費與櫃台收支都記在 {backfill.dayId}，並標為「回填」。回填中不能退款，也不能撤回或取消並退款。
+            這裡補登的訂餐、繳費與櫃台收支都記在 {backfill.dayId}，並標為「補登」。補登中不能退款，也不能撤回或取消並退款。
           </span>
           <Button
             variant="ghost"
@@ -1823,7 +1825,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             disabled={busy || page.loading}
             data-testid="leave-backfill-button"
           >
-            離開回填
+            回到今天
           </Button>
         </div>
       )}
@@ -2328,7 +2330,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                               variant="ghost"
                               onClick={openRefundPanel}
                               disabled={busy || Boolean(orderingBlocked) || backfillView}
-                              title={backfillView ? '回填中不能退款：退款會動到現場現金，只能在今天做' : undefined}
+                              title={backfillView ? '補登中不能退款：退款會動到現場現金，只能在今天做' : undefined}
                               data-testid="open-refund-button"
                             >
                               退款
@@ -2336,7 +2338,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                           )}
                           {mode === 'payment' && backfillView && (
                             <span className="cloud-orders__hint" data-testid="backfill-refund-note">
-                              回填中不能退款：退款會動到現場現金，只能在今天做。
+                              補登中不能退款：退款會動到現場現金，只能在今天做。
                             </span>
                           )}
                           <Button variant="ghost" onClick={cancelSelection} disabled={busy}>
@@ -2461,7 +2463,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         >
                           <span>{formatTaipeiTime(tx.createdAt)} {tx.paidAmount > 0 ? '收入' : '支出'} ${tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice}</span>
                           <span className="cloud-orders__recent-badge">{tx.status === 'voided' ? '已作廢' : tx.note}</span>
-                          {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
+                          {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>補登</span>}
                           {tx.status === 'active' && (
                             <span className="cloud-orders__row-actions">
                               <button type="button" onClick={() => openEdit(tx, 'correct')} disabled={busy || Boolean(orderingBlocked)}>更正</button>
@@ -2491,7 +2493,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         <span className="cloud-orders__recent-badge">
                           {summary}
                           {activeTransactions.some(tx => tx.studentId === student.studentId && txBackfilled(tx)) && (
-                            <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-recent-${student.studentCode}`}>回填</span>
+                            <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-recent-${student.studentCode}`}>補登</span>
                           )}
                         </span>
                       </li>
@@ -2575,7 +2577,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </button>
                     {editTransaction.paidAmount > 0 && backfillView && (
                       <p className="cloud-orders__muted" data-testid="backfill-cancel-refund-note">
-                        回填中不能「取消訂餐並退還現金」：退現金只能在今天做。
+                        補登中不能「取消訂餐並退還現金」：退現金只能在今天做。
                       </p>
                     )}
                     {editTransaction.paidAmount > 0 && !backfillView && (
@@ -2729,7 +2731,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       <td>
                         {itemLabel(tx)}
                         {tx.status === 'voided' && <span className="cloud-orders__student-badge">已作廢</span>}
-                        {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
+                        {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>補登</span>}
                       </td>
                       <td className="dt-num">${tx.mealPrice}</td>
                       <td className="dt-num">${tx.paidAmount}</td>

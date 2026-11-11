@@ -814,7 +814,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       const transactionRows = transactionSection.locator('tbody tr');
       await expect.poll(() => transactionRows.count()).toBe(selectedAccountRowsExpected);
       const closedDayRow = transactionSection.getByRole('row').filter({ hasText: d1Order.transactionId });
-      await expect(closedDayRow).toContainText('有效 · 回填');
+      await expect(closedDayRow).toContainText('有效 · 補登');
       await expect(closedDayRow).toContainText(ORIGINAL_NAME);
 
       const accountBalanceCell = page.locator('.cloud-account-history__balance div').filter({ hasText: '目前帳戶餘額' }).locator('dd');

@@ -9,9 +9,9 @@ describe('dayStateLabel（#688：日期列與橫幅 chip 共用的狀態文字�
     expect(dayStateLabel({ status: 'closed', backfill: true, kind: null, dayId: '2026-11-05', today: TODAY }).text).toBe('已關帳');
   });
 
-  it('labels a backfilling day 回填中, and 回填中（已重開） when it was reopened', () => {
-    expect(dayStateLabel({ status: 'open', backfill: true, kind: 'needs-close', dayId: '2026-11-05', today: TODAY })).toEqual({ text: '回填中', variant: 'warn' });
-    expect(dayStateLabel({ status: 'reopened', backfill: true, kind: 'needs-close', dayId: '2026-11-05', today: TODAY })).toEqual({ text: '回填中（已重開）', variant: 'warn' });
+  it('labels a backfilling day 補登中, and 補登中（已重開） when it was reopened', () => {
+    expect(dayStateLabel({ status: 'open', backfill: true, kind: 'needs-close', dayId: '2026-11-05', today: TODAY })).toEqual({ text: '補登中', variant: 'warn' });
+    expect(dayStateLabel({ status: 'reopened', backfill: true, kind: 'needs-close', dayId: '2026-11-05', today: TODAY })).toEqual({ text: '補登中（已重開）', variant: 'warn' });
   });
 
   it('labels a reopened ordinary day 已重開', () => {

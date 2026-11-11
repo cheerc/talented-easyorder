@@ -63,7 +63,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(within(item).getByText(/補記不會修改原關帳實點/).closest('.callout-ui')).not.toBeNull();
     fireEvent.click(within(item).getByRole('button', { name: '差額處理說明' }));
     expect(screen.getByRole('tooltip')).toHaveTextContent('有原因的關帳後補記');
-    expect(item).toHaveTextContent('每一天都已經有營業日資料，沒有可以回填的空日');
+    expect(item).toHaveTextContent('每一天都已經有營業日資料，沒有可以補登的空日');
     expect(item).not.toHaveTextContent(/已更正完成|已修正/);
     fireEvent.click(within(item).getByRole('button', { name: '到前一個已關帳日補記差額（2026-10-13）' }));
     expect(onOpenPostCloseEntry).toHaveBeenCalledWith(mismatch);
@@ -92,9 +92,9 @@ describe('CloudLedgerAnomaliesPage', () => {
     const gap = screen.getByTestId('gap-days-2026-10-16');
     expect(gap).toHaveTextContent('中間沒有營業日資料的日子共 2 天');
     expect(gap).not.toHaveTextContent('先列出最早的');
-    fireEvent.click(within(gap).getByRole('button', { name: '回填這一天（2026-10-15）' }));
+    fireEvent.click(within(gap).getByRole('button', { name: '開始補登這一天（2026-10-15）' }));
     expect(onOpenDayClose).toHaveBeenCalledWith('2026-10-15');
-    fireEvent.click(within(gap).getByRole('button', { name: '回填這一天（2026-10-14）' }));
+    fireEvent.click(within(gap).getByRole('button', { name: '開始補登這一天（2026-10-14）' }));
     expect(onOpenDayClose).toHaveBeenLastCalledWith('2026-10-14');
     expect(screen.queryByTestId('post-close-shortcut-2026-10-16')).not.toBeInTheDocument();
   });

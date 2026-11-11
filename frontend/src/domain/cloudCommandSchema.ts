@@ -390,7 +390,7 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     if (!Object.hasOwn(value, 'alignWithDayId')) return base as CommandPayloadByKind['CloseDay'];
     // Back-filled day: no difference is accepted, the alignment day is a date or null.
     if (value.countedCash !== value.expectedCash) {
-      throw new InvalidCloudCommandInput('回填日關帳不得有差額');
+      throw new InvalidCloudCommandInput('補登日關帳不得有差額');
     }
     if (value.alignWithDayId !== null) dateValue(value.alignWithDayId, 'alignWithDayId');
     return { ...base, alignWithDayId: value.alignWithDayId } as CommandPayloadByKind['CloseDay'];
@@ -826,7 +826,7 @@ export function normalizeEnabledCommandInput(
     const payload = normalizePayload(kind, input.payload);
     const align = kind === 'CloseDay' ? (payload as CommandPayloadByKind['CloseDay']).alignWithDayId : undefined;
     if (typeof align === 'string' && align <= input.targets.dayId) {
-      throw new InvalidCloudCommandInput('對齊日必須晚於回填日');
+      throw new InvalidCloudCommandInput('對齊日必須晚於補登日');
     }
     return {
       commandId: input.commandId,
@@ -1568,15 +1568,15 @@ function validateBackfillOpeningReceipt(
 
 /** `backfillDays/{dayId}`（契約 §12）：回填標記，建立後不可改也不可刪。 */
 export function decodeBackfillDoc(value: unknown, dayId: string): Record<string, unknown> {
-  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('回填標記不是物件');
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('補登標記不是物件');
   exactKeys(value, ['dayId', 'reason', 'startedBy', 'startedAt', 'commandId']);
-  if (value.dayId !== dayId) throw new InvalidCloudCommandInput('回填標記日期與路徑不一致');
+  if (value.dayId !== dayId) throw new InvalidCloudCommandInput('補登標記日期與路徑不一致');
   if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
-    throw new InvalidCloudCommandInput('回填標記原因不合法');
+    throw new InvalidCloudCommandInput('補登標記原因不合法');
   }
-  stringValue(value.startedBy, '回填標記 startedBy');
-  if (!(value.startedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('回填標記 startedAt 必須是 Firestore Timestamp');
-  stringValue(value.commandId, '回填標記 commandId', 36);
+  stringValue(value.startedBy, '補登標記 startedBy');
+  if (!(value.startedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('補登標記 startedAt 必須是 Firestore Timestamp');
+  stringValue(value.commandId, '補登標記 commandId', 36);
   return value;
 }
 
@@ -1602,7 +1602,7 @@ function validateStartBackfillReceipt(
   const payload = normalized.payload;
   if (receipt.businessDate !== dayId || receipt.studentId !== null || receipt.reason !== payload.reason
     || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0 || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
-    throw new InvalidCloudCommandInput('開始回填 receipt 共用欄位或 cashEffect 不一致');
+    throw new InvalidCloudCommandInput('開始補登 receipt 共用欄位或 cashEffect 不一致');
   }
   const dayBefore = validateReceiptDay(before.day, dayId, 'receipt.before.day');
   const dayAfter = validateReceiptDay(after.day, dayId, 'receipt.after.day');
@@ -1611,14 +1611,14 @@ function validateStartBackfillReceipt(
     || (dayBefore.status !== 'open' && dayBefore.status !== 'reopened')
     || dayBefore.lastSettlementRevision !== 0
     || canonicalJson(dayBefore) !== canonicalJson(dayAfter)) {
-    throw new InvalidCloudCommandInput('開始回填 receipt day snapshots 不一致');
+    throw new InvalidCloudCommandInput('開始補登 receipt day snapshots 不一致');
   }
-  if (before.backfill !== null) throw new InvalidCloudCommandInput('開始回填 receipt 不應有舊標記');
+  if (before.backfill !== null) throw new InvalidCloudCommandInput('開始補登 receipt 不應有舊標記');
   const marker = decodeBackfillDoc(after.backfill, dayId);
   const actorUid = (receipt.actor as Record<string, unknown>).uid;
   if (marker.reason !== payload.reason || marker.startedBy !== actorUid
     || !timestampMatches(marker.startedAt, committedAt) || marker.commandId !== commandId) {
-    throw new InvalidCloudCommandInput('開始回填 receipt 標記不一致');
+    throw new InvalidCloudCommandInput('開始補登 receipt 標記不一致');
   }
 }
 

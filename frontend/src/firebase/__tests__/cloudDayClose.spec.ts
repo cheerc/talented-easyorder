@@ -1661,7 +1661,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       const before = await state(dayId);
       for (const attempt of [() => backfillOrder(dayId, uuid(), ''), () => backfillPayment(dayId, 200, '前天停電'), () => backfillCash(dayId, 50, '零錢補充')]) {
         // The unmarked past day is refused by the date rule: the writer names the missing marker.
-        const error = dayId === gap ? { code: 'INVALID_INPUT', message: expect.stringContaining('沒有回填標記') } : { code: 'INVALID_INPUT' };
+        const error = dayId === gap ? { code: 'INVALID_INPUT', message: expect.stringContaining('沒有補登標記') } : { code: 'INVALID_INPUT' };
         expect(await attempt(), dayId).toMatchObject({ result: { ok: false, error } });
       }
       expect(await state(dayId)).toEqual(before);
@@ -1889,7 +1889,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await state(gap)).toEqual(before);
     const ordinary = await state(today);
     expect(await repository().closeDay(await closeInput({ countedCash: 1170, align: null }, today)))
-      .toMatchObject({ ok: false, error: { code: 'INVALID_INPUT', message: expect.stringContaining('沒有回填標記') } });
+      .toMatchObject({ ok: false, error: { code: 'INVALID_INPUT', message: expect.stringContaining('沒有補登標記') } });
     expect(await state(today)).toEqual(ordinary);
   });
 
@@ -2027,7 +2027,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const before = await state(gap);
     for (const attempt of [() => backfillOrder(gap), () => backfillPayment(gap), () => backfillCash(gap)]) {
       const { result } = await attempt();
-      expect(result).toMatchObject({ ok: false, error: { code: 'DAY_CLOSED', message: expect.stringContaining('沒有回填標記') } });
+      expect(result).toMatchObject({ ok: false, error: { code: 'DAY_CLOSED', message: expect.stringContaining('沒有補登標記') } });
     }
     expect(await state(gap)).toEqual(before);
   });

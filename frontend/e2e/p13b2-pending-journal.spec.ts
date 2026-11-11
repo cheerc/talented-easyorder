@@ -2101,7 +2101,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     const today = taipeiToday();
     const gap = shiftBusinessDate(today, -2);
     const datasetId = 'p13b2b2c-backfill';
-    const sentinelReason = 'P13b2b2c 斷線回填原因';
+    const sentinelReason = 'P13b2b2c 斷線補登原因';
     await upsertDocument('days', today, {
       status: 'open', revision: 1, menu: null,
       openingCash: null, openedBy: null, openedAt: null,
@@ -2114,13 +2114,13 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     try {
       await openDayClose(page);
       await page.locator('#cloud-day-close-date').fill(gap);
-      const form = page.getByRole('form', { name: `${gap} 回填` });
+      const form = page.getByRole('form', { name: `${gap} 開始補登這一天` });
       await expect(form).toBeVisible();
-      await expect(form.getByRole('button', { name: '確認回填這一天' })).toBeEnabled({ timeout: 15000 });
+      await expect(form.getByRole('button', { name: '確認開始補登這一天' })).toBeEnabled({ timeout: 15000 });
       await form.getByRole('textbox', { name: /開帳現金（元）/ }).fill('870');
-      await form.getByRole('textbox', { name: /回填原因/ }).fill(sentinelReason);
+      await form.getByRole('textbox', { name: /補登原因/ }).fill(sentinelReason);
       held.arm();
-      await form.getByRole('button', { name: '確認回填這一天' }).click();
+      await form.getByRole('button', { name: '確認開始補登這一天' }).click();
 
       // Step one (EnsureDay) takes effect on the server, but its response stays held.
       await waitForWriteGate(held.state.intercepted.promise, 'EnsureDay commit response gate');
@@ -2151,7 +2151,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
 
       // Only the explicit continue starts the opening step; its own returned receipt then advances to the marker once.
       await page.getByTestId('backfill-continue').click();
-      await expect(page.getByText(/已標為回填，可以到訂餐頁補登交易/)).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText(/已開始補登這一天，可以到訂餐頁補登交易/)).toBeVisible({ timeout: 30000 });
       // EnsureDay and BackfillOpeningCash write the day; StartBackfill only writes the marker, counted via the receipts below.
       expect(held.state.matched).toBe(2);
 

@@ -645,12 +645,12 @@ describeWithEmulator('P14 cloud backup', () => {
     // A transaction created after its business day needs an earlier marker: without the StartBackfill record,
     // or with the transaction moved in front of it, the replay refuses.
     const withoutMarker = opened.records.filter(record => record.kind !== 'StartBackfill');
-    expect(() => replayBackupProjections(withoutMarker, opened.baseState)).toThrow(/回填標記/);
+    expect(() => replayBackupProjections(withoutMarker, opened.baseState)).toThrow(/補登標記/);
     const reordered = [...opened.records.slice(0, 3), opened.records[4]!, opened.records[3]!, ...opened.records.slice(5)];
-    expect(() => replayBackupProjections(reordered, opened.baseState)).toThrow(/回填標記/);
+    expect(() => replayBackupProjections(reordered, opened.baseState)).toThrow(/補登標記/);
     // A marker replayed twice is refused.
     const duplicate = [...opened.records.slice(0, 4), opened.records[3]!, ...opened.records.slice(4)];
-    expect(() => replayBackupProjections(duplicate, opened.baseState)).toThrow(/回填標記/);
+    expect(() => replayBackupProjections(duplicate, opened.baseState)).toThrow(/補登標記/);
     // A marker for a day that is not before the commit date (today) is refused at validation.
     const forToday = structuredClone(opened);
     expect(forToday.records[3]!.targets.dayId).toBe(gap);
@@ -889,7 +889,7 @@ describeWithEmulator('P14 cloud backup', () => {
     // A null alignment passes the decoder but the later opened day is a replay-time fact only when the key is present:
     // an alignment on a day without a marker is refused.
     const unmarked = opened.records.filter(record => !['StartBackfill', 'CreatePayment', 'CreateCashMovement'].includes(record.kind));
-    expect(() => replayBackupProjections(unmarked, opened.baseState)).toThrow(/沒有回填標記/);
+    expect(() => replayBackupProjections(unmarked, opened.baseState)).toThrow(/沒有補登標記/);
     // A close from before P11c3 (no alignWithDayId on a marked day) still replays.
     const legacy = structuredClone(opened);
     delete (legacy.records[closeAt]!.payload as Record<string, unknown>).alignWithDayId;

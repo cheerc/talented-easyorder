@@ -1846,18 +1846,21 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     renderComponent('uid-1:1', GAP);
     const banner = await screen.findByTestId('backfill-banner');
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledWith({ dayId: GAP });
-    expect(banner).toHaveTextContent(`正在回填 ${GAP}（原因：那天斷線）`);
+    // The title is only the day; the reason is a small line under it (#689).
+    expect(within(banner).getByText(`正在補登 ${GAP}`)).toBeVisible();
+    expect(within(banner).getByText('原因：那天斷線')).toBeVisible();
+    expect(within(banner).getByText(`正在補登 ${GAP}`)).not.toHaveTextContent('原因');
     const field = screen.getByLabelText('營業日');
     expect(field.tagName).toBe('SELECT');
     expect(field).toHaveValue(GAP);
-    expect(field.closest('.date-field-ui')!.querySelector('.date-field-ui__status')).toHaveTextContent('回填中');
+    expect(field.closest('.date-field-ui')!.querySelector('.date-field-ui__status')).toHaveTextContent('補登中');
     await selectStudent('001');
     fireEvent.click(screen.getByTestId('open-payment-details-button'));
-    expect(await screen.findByTestId('backfill-tag-tx-back')).toHaveTextContent('回填');
+    expect(await screen.findByTestId('backfill-tag-tx-back')).toHaveTextContent('補登');
     expect(screen.queryByTestId('backfill-tag-tx-live')).toBeNull();
   });
 
-  it('switches to a backfilling day from the day selector and leaves with 離開回填', async () => {
+  it('switches to a backfilling day from the day selector and leaves with 回到今天', async () => {
     repositoryMock.loadSnapshot.mockImplementation(async (options: { dayId?: string | null } = {}) => (
       options.dayId ? backfillSnapshot() : snapshot({ backfillDays: [marker] })
     ));
@@ -1897,7 +1900,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     await selectStudent('001');
     fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     expect(screen.getByTestId('open-refund-button')).toBeDisabled();
-    expect(screen.getByTestId('backfill-refund-note')).toHaveTextContent('回填中不能退款');
+    expect(screen.getByTestId('backfill-refund-note')).toHaveTextContent('補登中不能退款');
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
@@ -1916,8 +1919,9 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     renderComponent();
     const select = await screen.findByTestId('orders-day-select');
     fireEvent.change(select, { target: { value: GAP } });
-    expect(await screen.findByTestId('backfill-banner')).toHaveTextContent(`正在回填 ${GAP}（原因：那天斷線）`);
-    expect(screen.queryByText(/已經關過帳，不能再用回填補登/)).toBeNull();
+    expect(await screen.findByTestId('backfill-banner')).toHaveTextContent(`正在補登 ${GAP}`);
+    expect(screen.getByTestId('backfill-banner')).toHaveTextContent('原因：那天斷線');
+    expect(screen.queryByText(/已經關過帳，不能再用補登/)).toBeNull();
     await selectStudent('001');
     fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
@@ -1987,16 +1991,16 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     fireEvent.click(within(await screen.findByTestId('detail-row-tx-live')).getByRole('button', { name: '更正' }));
     expect(await screen.findByRole('button', { name: '取消訂餐，錢留在帳戶' })).toBeVisible();
     expect(screen.queryByRole('button', { name: /取消訂餐並退還/ })).toBeNull();
-    expect(screen.getByTestId('backfill-cancel-refund-note')).toHaveTextContent('回填中不能');
+    expect(screen.getByTestId('backfill-cancel-refund-note')).toHaveTextContent('補登中不能');
   });
 
   it('refuses a day that was closed after being marked, and falls back to today with a button', async () => {
     repositoryMock.loadSnapshot.mockImplementation(async (options: { dayId?: string | null } = {}) => {
-      if (options.dayId) throw { code: 'INVALID_INPUT', message: `${options.dayId} 沒有回填標記` };
+      if (options.dayId) throw { code: 'INVALID_INPUT', message: `${options.dayId} 沒有補登標記` };
       return snapshot();
     });
     renderComponent('uid-1:1', GAP);
-    expect(await screen.findByText(/沒有回填標記/)).toBeVisible();
+    expect(await screen.findByText(/沒有補登標記/)).toBeVisible();
     fireEvent.click(screen.getByTestId('back-to-today-button'));
     expect(await screen.findByTestId('cloud-topbar-bento')).toBeVisible();
     expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: null });

@@ -38,14 +38,14 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
           目前有 {anomaly.activeTransactionCount} 筆有效交易。
           在它被處理之前，之後每天開帳與關帳都會看到警示。
           <HelpTip label="處理方式說明">
-            {`到「日結」頁查看這一天，核對全日現金後關帳；沒有開帳現金時先補開帳（需填原因）。${anomaly.status === 'open' ? '\n如果是斷線等原因漏記了交易，也可以先標為回填，再補登剩下的交易。' : ''}`}
+            {`到「日結」頁查看這一天，核對全日現金後關帳；沒有開帳現金時先補開帳（需填原因）。${anomaly.status === 'open' ? '\n如果是斷線等原因漏記了交易，也可以先開始補登這一天，再補登剩下的交易。' : ''}`}
           </HelpTip>
         </p>
         <div className="cloud-ledger-anomalies__actions">
           <Button type="button" variant="secondary" onClick={() => onOpenDayClose(anomaly.dayId)}>到日結頁處理 {anomaly.dayId}</Button>
           {anomaly.status === 'open' && (
             <Button type="button" variant="ghost" onClick={() => onOpenDayClose(anomaly.dayId)} data-testid={`anomaly-mark-backfill-${anomaly.dayId}`}>
-              標為回填，補登剩下的交易（{anomaly.dayId}）
+              開始補登這一天，補登剩下的交易（{anomaly.dayId}）
             </Button>
           )}
         </div>
@@ -66,7 +66,7 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
         ，開帳比{anomaly.previousPostCloseNet !== 0 ? '有效關帳現金' : '實點'}{direction}了 {formatMoney(Math.abs(anomaly.difference))}。
         兩天相隔 {anomaly.daysApart} 天。
         <HelpTip label="差額處理說明">
-          {'差額可能來自中間沒有記到的日子，或前一個已關帳日的帳。\n中間完全沒有營業日資料的日子可以在下面回填，補登當天的訂餐、繳費與櫃台收支。\n若中間沒有缺少營業日資料，且差額是前一個已關帳日漏記的現金收支，可以在該日新增一筆有原因的關帳後補記。'}
+          {'差額可能來自中間沒有記到的日子，或前一個已關帳日的帳。\n中間完全沒有營業日資料的日子可以在下面補登，補登當天的訂餐、繳費與櫃台收支。\n若中間沒有缺少營業日資料，且差額是前一個已關帳日漏記的現金收支，可以在該日新增一筆有原因的關帳後補記。'}
         </HelpTip>
       </p>
       <Callout variant="info" className="cloud-ledger-anomalies__callout">補記不會修改原關帳實點，也不會自動更正其他交易。</Callout>
@@ -80,14 +80,14 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
             {anomaly.gapDays.map(gapDay => (
               <li key={gapDay}>
                 <span>{gapDay}</span>
-                <Button type="button" variant="secondary" onClick={() => onOpenDayClose(gapDay)} data-testid={`backfill-gap-${gapDay}`}>回填這一天（{gapDay}）</Button>
+                <Button type="button" variant="secondary" onClick={() => onOpenDayClose(gapDay)} data-testid={`backfill-gap-${gapDay}`}>開始補登這一天（{gapDay}）</Button>
               </li>
             ))}
           </ul>
         </div>
       ) : (
         <>
-          <p>兩個日期之間每一天都已經有營業日資料，沒有可以回填的空日。</p>
+          <p>兩個日期之間每一天都已經有營業日資料，沒有可以補登的空日。</p>
           <Button type="button" variant="secondary" onClick={() => onOpenPostCloseEntry(anomaly)} data-testid={`post-close-shortcut-${anomaly.dayId}`}>
             到前一個已關帳日補記差額（{anomaly.previousClosedDayId}）
           </Button>
