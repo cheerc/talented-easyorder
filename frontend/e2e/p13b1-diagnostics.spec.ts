@@ -143,7 +143,9 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     })));
 
     await seedAccessLease({ holderUid: 'p13b1-other-holder', epoch: 2, updatedAt: new Date() });
-    await expect(page.getByLabel('EasyOrder 登入狀態')).toBeVisible();
+    // 租約被他人接手後，畫面先短暫顯示「EasyOrder 登入狀態」，待讀到接手者才換成最終的「已被登出」；只斷言最終畫面。
+    await expect(page.getByRole('main', { name: '已被登出' })).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: '已被登出' })).toBeVisible();
     await expect(page.getByRole('button', { name: /本機診斷.*F3/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '匯出本機診斷' })).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'))).toContain('UNKNOWN_RESULT');
