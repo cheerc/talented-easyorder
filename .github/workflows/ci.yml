@@ -559,7 +559,6 @@ jobs:
           - config: hosting
           - config: playwright.config.ts
           - config: playwright.p12c.config.ts
-          - config: playwright.prototype.config.ts
           - config: playwright.p13a.config.ts
           - config: playwright.p13a-dev.config.ts
           - config: playwright.p13a-no-config.config.ts

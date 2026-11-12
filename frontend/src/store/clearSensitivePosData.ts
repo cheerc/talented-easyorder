@@ -1,4 +1,3 @@
-import { isCloudMode } from '../appMode';
 import { clearErrorLog } from '../errors/errorLogger';
 
 // 舊版雲端本機資料的 key（含「pos」「crash-draft」字樣）。保持原名，
@@ -12,8 +11,6 @@ const LEGACY_CLOUD_POS_STORAGE_KEY = 'pos-storage-cloud';
  * 只動雲端命名空間，不碰其他 key（顯示偏好、安全診斷等）。
  */
 export async function clearSensitivePosData(): Promise<void> {
-  if (!isCloudMode) return;
-
   const cleanupErrors: string[] = [];
   if (typeof indexedDB !== 'undefined') {
     try {

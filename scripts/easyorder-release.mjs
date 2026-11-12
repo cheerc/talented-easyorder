@@ -18,7 +18,7 @@ const usage = `EasyOrder P17 本機 release 工具（Node 24）
   ./deploy.sh deploy-test [--index-timeout-minutes 30]   （只限 firebase-test；target 取自 GitHub Environment firebase-test）
   ./deploy.sh deploy-ci --project <id> --release <目錄> [--index-timeout-minutes 30]   （只限 GitHub Actions 核准後的 deploy workflow）
 正式部署由本人操作：本機互動終端，或本人在 GitHub 核准的 deploy workflow（firebase-test 可用 deploy-test，或用 agent 告知後自行觸發的 workflow；firebase-production 由本人在本機互動終端部署，或由本人逐次允許 workflow）。先 indexes 並確認 READY，再 rules，最後 hosting；詳見 docs/ops/DEPLOYMENT-GUIDE.md。
-舊 d1-d3/p1-p5 已移除；練習用 frontend/npm run dev:prototype，Emulator 明示 demo-easyorder。
+舊 d1-d3/p1-p5 已移除；Emulator 明示 demo-easyorder。
 `;
 
 function flags(args, allowed, booleans = []) {

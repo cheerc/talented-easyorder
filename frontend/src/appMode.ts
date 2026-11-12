@@ -1,6 +1,5 @@
-// M0：本機練習模式（`npm run dev:prototype`，Vite mode = 'prototype'）。
-// 此模式不初始化 Firebase，並以獨立 port 與儲存命名空間隔離一般模式資料。
-// 見 docs/superpowers/specs/frontend-prototype-workflow-spec.md §3 S-ENV。
+// #709：本機練習（prototype）模式已移除；只剩雲端正式版，缺 Firebase 設定一律 fail closed。
+// 下方仍保留 prototype／local-only 的名稱與命名空間輔助，待 P3 隨已無入口的舊程式一併刪除。
 // P02：正式後端雲端模式判定與儲存隔離。
 // 見 docs/superpowers/specs/2026-10-13-free-production-backend-spec.md §5, §8。
 
@@ -61,12 +60,9 @@ export function getStorageMode(
  * 不得無聲降級為 local-only 進行正式營運。
  */
 export function validateAppModeConfig(
-  mode: string | undefined = import.meta.env.MODE,
+  _mode?: string, // #709：mode 不再影響結果；任何 mode 缺設定都 fail closed。
   env: Record<string, string | undefined> = import.meta.env,
 ): { ok: true } | { ok: false; error: string } {
-  if (isPrototypeModeName(mode)) {
-    return { ok: true };
-  }
   if (!hasFirebaseConfig(env)) {
     return {
       ok: false,
@@ -112,8 +108,7 @@ export function canSeedData(mode: StorageMode = getStorageMode()): boolean {
 /** html 上標記雲端模式的屬性；cloud-scale.css 以它限定等比放大與字型（#648）。 */
 export const APP_MODE_ATTRIBUTE = 'data-app-mode';
 
-/** 雲端（非 prototype）模式在 html 設 data-app-mode="cloud"；prototype 不帶該屬性。 */
-export function applyAppModeAttribute(root: HTMLElement, prototype: boolean): void {
-  if (prototype) root.removeAttribute(APP_MODE_ATTRIBUTE);
-  else root.setAttribute(APP_MODE_ATTRIBUTE, 'cloud');
+/** 在 html 設 data-app-mode="cloud"（#709 後只有雲端模式）。 */
+export function applyAppModeAttribute(root: HTMLElement): void {
+  root.setAttribute(APP_MODE_ATTRIBUTE, 'cloud');
 }

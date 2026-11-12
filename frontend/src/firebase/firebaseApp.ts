@@ -13,7 +13,6 @@ import {
   registerCloudRecoveryPair,
   type FirestoreEndpoint,
 } from './cloudRecoveryReader';
-import { isPrototypeModeName } from '../appMode';
 
 export interface FirebaseEnv {
   MODE?: string;
@@ -53,10 +52,6 @@ export function readFirebaseConfig(env: FirebaseEnv): FirebaseOptions {
 }
 
 export function getFirebaseConfigState(env: FirebaseEnv): FirebaseConfigState {
-  // M0：本機練習模式即使有 Firebase env 也不連線。
-  if (isPrototypeModeName(env.MODE)) {
-    return { configured: false, error: '本機練習模式不連線 Firebase' };
-  }
   try {
     return { configured: true, config: readFirebaseConfig(env) };
   } catch (error) {

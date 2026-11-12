@@ -18,14 +18,7 @@ npm install
 npm run dev
 ```
 
-### 本機練習模式
-
-```bash
-cd frontend
-npm run dev:prototype   # http://localhost:5174
-```
-
-練習模式不初始化 Firebase（即使有 `.env` 也一樣），不需登入，資料存在獨立的瀏覽器儲存區（`*-prototype`），不影響一般模式。畫面右上與分頁標題標示「本機練習」。
+`npm run dev` 需要 `frontend/.env`（範本 `frontend/.env.example`）；缺 Firebase 設定時畫面顯示「Firebase 設定錯誤」，不會退回本機模式。自動化測試用 `demo-easyorder` Emulator，命令見 [frontend/CLAUDE.md](frontend/CLAUDE.md)。
 
 ## Firebase 與正式部署
 

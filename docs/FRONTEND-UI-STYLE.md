@@ -1,6 +1,6 @@
 # 雲端前端 UI 規範（#648）
 
-改 `frontend/` 雲端頁（F1–F5 與 `components/ui/`）的畫面前必讀。範圍只含雲端模式；prototype 頁面（`npm run dev:prototype`、`AdminScreen`、`ReportScreen`、`HistoryScreen`、`report/` 的 `.rpt-*`）不套用。這是簡單的午餐訂餐系統：規範以好維護、少例外為先，不新增與本文件衝突的字級、顏色或元件。
+改 `frontend/` 雲端頁（F1–F5 與 `components/ui/`）的畫面前必讀。範圍只含雲端模式。這是簡單的午餐訂餐系統：規範以好維護、少例外為先，不新增與本文件衝突的字級、顏色或元件。
 
 視覺參照（假資料，僅供方向；以本文件為準，用瀏覽器直接開檔，不載外部資源）：
 
@@ -10,7 +10,7 @@
 ## 設計基準與等比放大
 
 - 基準：MacBook Air 13 吋預設縮放，1440×900 CSS px。正式櫃台 24 吋 1920×1080 PC 等比放大。
-- `frontend/src/styles/cloud-scale.css` 在 `html[data-app-mode="cloud"]` 設 `font-size: clamp(14px, calc(100vw / 90), 21.333px)`（1440→16px、1920→21.33px）。屬性由 `main.tsx` 呼叫 `applyAppModeAttribute`（`appMode.ts`）設定；prototype 不帶該屬性，`html` 維持原本的 15px。
+- `frontend/src/styles/cloud-scale.css` 在 `html[data-app-mode="cloud"]` 設 `font-size: clamp(14px, calc(100vw / 90), 21.333px)`（1440→16px、1920→21.33px）。屬性由 `main.tsx` 呼叫 `applyAppModeAttribute`（`appMode.ts`）設定，一律設為 `cloud`。
 - 新寫尺寸（字級、間距、寬高）一律用 rem 或下表 token；不新增 px 字級。雲端 `body` 為 `--t-md`（1440 寬＝17px、1920 寬＝22.67px），與改版前預設（`uiTweaksStore` 預設 `scale='large'` → `body[data-fs="lg"]` 的 `--fs: 17px`）在 1440 相同；`cloud-scale.css` 以 rem 覆蓋 `body[data-fs]` 這個 prototype tweak，雲端不再受它影響（`--fs` 仍給 prototype）。
 - `--r`、`--r-lg` 仍是 px（prototype 共用 `tokens.css`，改 rem 會讓 prototype 縮小）；雲端新元件直接引用即可。
 - 字型：系統字型，不載網路字型、不加 `@font-face`、不改 CSP。`--font-sans`（PingFang TC、Microsoft JhengHei、Noto Sans TC、system-ui）；`--font-mono`（ui-monospace、SF Mono、Consolas）用於金額與編號。
@@ -69,7 +69,7 @@
 
 px 字級檢查採明確清單：`FONT_SIZE_CHECKED_UI_CSS`（新 ui 元件）、`FONT_SIZE_CHECKED_STYLES_CSS`（`data-table.css`）、`FONT_SIZE_CHECKED_CLOUD_CSS`（雲端頁）。測試另掃 `components/cloud/` 目錄：新增的頁面 CSS 若不在清單內就會失敗，不能漏檢。**每個雲端頁在自己的改版 Phase 把該頁 CSS 加進 `FONT_SIZE_CHECKED_CLOUD_CSS`，且字級改用 token；P8 結束時，所有雲端頁 CSS 都必須在清單內。** 新增 `components/ui` 元件 CSS 也要加進 `FONT_SIZE_CHECKED_UI_CSS`。
 
-**雲端外殼字級（#667）**：`topbar.css` 與 prototype 共用，px 字級保留給 prototype、不改。雲端外殼（品牌、主分頁、「異常 N」、次級導覽、操作員選單）的字級在 `cloud-scale.css` 以 `html[data-app-mode="cloud"] …` 覆寫成 token 或 `em`（附屬小字如 `.tab-key` 用相對父元素的 `em`），1920 才會依 1440 等比放大約 4/3。原生 `button`、`select`、`input` 不繼承字級：新增雲端頁時要設 token 或 `font: inherit`。守門：`cloudPagesCss.test.ts` 的 `CLOUD_SHELL_SELECTORS`（每個選擇器都要有雲端覆寫，且不是 px）；`ui-closeout.spec.ts` 的「外殼與原生控制項等比放大」在櫃台、今日帳、菜單與開帳量同一頁 1440／1920 的 computed font-size，比值須在 4/3 ± 0.02，並確認五個主分頁仍在同一列；`prototype-layout.spec.ts` 保護 prototype 的 `.tab` 14px、`.brand-name` 15px。
+**雲端外殼字級（#667）**：`topbar.css` 的 px 字級保留不改，雲端以 `cloud-scale.css` 覆寫。雲端外殼（品牌、主分頁、「異常 N」、次級導覽、操作員選單）的字級在 `cloud-scale.css` 以 `html[data-app-mode="cloud"] …` 覆寫成 token 或 `em`（附屬小字如 `.tab-key` 用相對父元素的 `em`），1920 才會依 1440 等比放大約 4/3。原生 `button`、`select`、`input` 不繼承字級：新增雲端頁時要設 token 或 `font: inherit`。守門：`cloudPagesCss.test.ts` 的 `CLOUD_SHELL_SELECTORS`（每個選擇器都要有雲端覆寫，且不是 px）；`ui-closeout.spec.ts` 的「外殼與原生控制項等比放大」在櫃台、今日帳、菜單與開帳量同一頁 1440／1920 的 computed font-size，比值須在 4/3 ± 0.02，並確認五個主分頁仍在同一列。
 
 ## 驗證入口
 
