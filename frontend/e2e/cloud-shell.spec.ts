@@ -95,8 +95,7 @@ test('operator menu closes on an outside click (#704)', async ({ googleSession }
   const menu = page.locator('.operator-menu');
   await menu.locator('summary').click();
   await expect(menu).toHaveAttribute('open', '');
-  await menu.getByLabel('主題').click({ trial: true });
-  await page.getByRole('main').click({ position: { x: 4, y: 300 } });
+  await page.locator('.brand-name').click();
   await expect(menu).not.toHaveAttribute('open', '');
   // 再開一次，點選單內部不收起。
   await menu.locator('summary').click();
