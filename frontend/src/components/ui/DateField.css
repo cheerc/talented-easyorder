@@ -13,19 +13,27 @@
   font-weight: 600;
 }
 
-/* 兩個 class：原生 select／input 在頁面 CSS 有 `font: inherit`（單一 class 加元素），這裡要壓過它。 */
+/* select 的箭頭與右內距由 styles/cloud-select.css 統一（用 background-color、不用簡寫，避免清掉箭頭）；
+   日期輸入的右內距在下一條規則補回。
+   兩個 class：頁面 CSS 對 input 有 `.page input` 規則、select 基線的 `font: inherit` 是低 specificity，
+   這裡的字型與字級要壓過它們。 */
 .date-field-ui .date-field-ui__control {
   box-sizing: border-box;
   width: auto;
   min-width: 0;
   min-height: 3rem;
-  padding: var(--s2) var(--s3);
+  padding-block: var(--s2);
+  padding-left: var(--s3);
   color: var(--ink);
-  background: var(--panel);
+  background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
   font-family: var(--font-mono);
   font-size: var(--t-lg);
+}
+
+.date-field-ui .date-field-ui__control:not(select) {
+  padding-right: var(--s3);
 }
 
 .date-field-ui .date-field-ui__control--static {

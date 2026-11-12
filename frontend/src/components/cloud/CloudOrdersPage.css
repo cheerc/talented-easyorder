@@ -37,11 +37,6 @@
   letter-spacing: 0.01em;
 }
 
-/* 原生 select 不繼承字級（瀏覽器預設 13.333px，不會等比放大）：與其他雲端頁一致，繼承容器的 token 字級。 */
-.cloud-orders select {
-  font: inherit;
-}
-
 /* ActionCard 的按鈕本身沒有字級（內層標題、說明、膠囊各用 token）：補 token 讓 1920 等比放大。 */
 .cloud-orders .action-card-ui {
   font-size: var(--t-sm);

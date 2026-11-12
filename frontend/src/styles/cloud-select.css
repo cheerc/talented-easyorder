@@ -1,0 +1,39 @@
+/* #706 雲端 select 共用基線。
+   原生 select（appearance: auto）的箭頭畫在右內距裡，各瀏覽器／OS 位置不同，常貼著右框。
+   這裡統一成 appearance: none + 自畫箭頭，並明確預留右側空間；箭頭顏色用三主題都有的 --ink-2（停用時 --ink-3）。
+   只限 html[data-app-mode="cloud"]（與 cloud-scale.css 同層），prototype 的 select 不受影響。
+   各頁與 DateField 只保留自己的尺寸（高度、字級、左內距、外框）；不要在頁面 CSS 再處理箭頭或 padding-right，
+   background 請用 background-color，不要用 background 簡寫（會清掉箭頭）。 */
+:where(html[data-app-mode="cloud"]) select {
+  /* 原生 select 預設不繼承字級；低 specificity，各頁自己設的字級仍優先。 */
+  font: inherit;
+}
+
+html[data-app-mode="cloud"] select {
+  --select-chevron: var(--ink-2);
+  appearance: none;
+  -webkit-appearance: none;
+  /* 箭頭右側留白 .75rem（與 DateField 的左內距 --s3 相近）＋箭頭寬 .7rem＋文字與箭頭間距 .8rem。 */
+  padding-right: calc(var(--s3) + 1.5rem);
+  /* 兩個 .35rem 方塊拼成向下的實心三角形；顏色跟著主題，不用圖檔。 */
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--select-chevron) 50%),
+    linear-gradient(135deg, var(--select-chevron) 50%, transparent 50%);
+  background-position: calc(100% - 1.1rem) 50%, calc(100% - .75rem) 50%;
+  background-size: .35rem .35rem, .35rem .35rem;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+}
+
+html[data-app-mode="cloud"] select:disabled {
+  --select-chevron: var(--ink-3);
+}
+
+/* 強制色彩（Windows 高對比）會忽略背景圖，自畫箭頭會消失：退回原生外觀，使用者仍有箭頭。 */
+@media (forced-colors: active) {
+  html[data-app-mode="cloud"] select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    padding-right: var(--s3);
+  }
+}

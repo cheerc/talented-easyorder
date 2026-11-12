@@ -282,9 +282,6 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
     expect(ruleBody(topbar, '.brand-name')).toContain('font-size: 15px');
   });
 
-  it('CloudOrdersPage.css 的原生 select 繼承容器字級（切換營業日），與其他雲端頁一致', () => {
-    expect(readCss('CloudOrdersPage.css')).toMatch(/\.cloud-orders select\s*\{[^}]*font:\s*inherit/);
-  });
 
   it('F1 結帳明細的標籤不斷行、不被金額擠壓（#687：預計結餘）', () => {
     const rule = ruleBody(readCss('CloudOrdersPage.css'), '.cloud-orders__breakdown-row dt');
@@ -319,3 +316,118 @@ describe('#690 共用 DateField 外觀', () => {
     expect(readCss('CloudDayVendorsPage.css')).not.toContain('.cloud-day-vendors__date-meta');
   });
 });
+
+// #706：雲端所有原生 select 共用一條基線（cloud-select.css）：appearance:none、自畫箭頭、右側預留箭頭空間。
+// 各頁與 DateField 只保留自己的尺寸，不再各自處理箭頭或字級繼承。
+describe('#706 雲端 select 共用基線', () => {
+  const SELECT_CSS = resolve(STYLES_DIR, 'cloud-select.css');
+  const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const selectCss = () => stripComments(readFileSync(SELECT_CSS, 'utf8'));
+  const rules = () => [...selectCss().matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
+    selector: match[1].trim().replace(/\s+/g, ' '),
+    body: match[2],
+  }));
+  const baseline = () => rules().find(rule => rule.selector === 'html[data-app-mode="cloud"] select');
+
+  it('index.css 在 cloud-scale.css 之後引入 cloud-select.css', () => {
+    const index = readFileSync(INDEX_CSS, 'utf8');
+    expect(index).toContain("@import './styles/cloud-select.css'");
+    expect(index.indexOf('cloud-select.css')).toBeGreaterThan(index.indexOf('cloud-scale.css'));
+  });
+
+  it('每個選擇器都限定在雲端模式（prototype 的 select 不受影響）', () => {
+    // @media 等 at-rule 的前言不是選擇器（其內的規則由下一個測試單獨檢查）。
+    const selectors = rules().flatMap(rule => rule.selector.split(',').map(s => s.trim())).filter(s => !s.startsWith('@'));
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const selector of selectors) expect(selector).toContain('[data-app-mode="cloud"]');
+  });
+
+  it('基線 appearance:none，並用三主題都有的 --ink-2 自畫箭頭，右側預留空間', () => {
+    const body = baseline()?.body ?? '';
+    expect(body).toMatch(/appearance:\s*none/);
+    expect(body).toMatch(/background-image:[^;]*var\(--select-chevron\)/);
+    expect(body).toMatch(/--select-chevron:\s*var\(--ink-2\)/);
+    expect(body).toMatch(/background-repeat:\s*no-repeat/);
+    expect(body).toMatch(/padding-right:\s*calc\(/);
+  });
+
+  it('箭頭顏色不硬寫色碼，且 --ink-2 在三主題都定義', () => {
+    expect(hexCount(selectCss())).toBe(0);
+    const css = readFileSync(TOKENS, 'utf8');
+    for (const selector of [':root', '[data-theme="dark"]', '[data-theme="warm"]']) {
+      expect(declaredTokens(themeBlock(css, selector))).toContain('--ink-2');
+      expect(declaredTokens(themeBlock(css, selector))).toContain('--ink-3');
+    }
+  });
+
+  it('停用狀態的箭頭改用較淡的 --ink-3', () => {
+    const disabled = rules().find(rule => rule.selector === 'html[data-app-mode="cloud"] select:disabled');
+    expect(disabled?.body ?? '').toMatch(/--select-chevron:\s*var\(--ink-3\)/);
+  });
+
+  it('原生 select 繼承容器字級放進基線（低 specificity，不壓過各頁的尺寸）', () => {
+    const rule = rules().find(item => item.selector === ':where(html[data-app-mode="cloud"]) select');
+    expect(rule?.body ?? '').toMatch(/font:\s*inherit/);
+  });
+
+  it('DateField 的控制項不用 padding／background 簡寫壓掉基線的右內距與箭頭', () => {
+    const css = stripComments(readFileSync(resolve(UI_DIR, 'DateField.css'), 'utf8'));
+    const control = ruleBody(css, '.date-field-ui .date-field-ui__control');
+    expect(control).not.toMatch(/(^|[\s;{])padding:/);
+    expect(control).not.toMatch(/(^|[\s;{])background:/);
+    expect(control).toMatch(/background-color:\s*var\(--panel\)/);
+  });
+
+  it.each(['CloudOrdersPage.css', 'CloudReportPage.css', 'CloudAccountHistoryPage.css', 'CloudDayClosePage.css', 'CloudDayVendorsPage.css'])(
+    '%s 不再自己宣告 select 的 font: inherit（由基線統一）',
+    name => {
+      const css = stripComments(readCss(name));
+      for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+        const selectors = rule[1].split(',').map(s => s.trim());
+        const selectOnly = selectors.filter(s => /(^|[\s>+~])select$/.test(s));
+        if (selectOnly.length > 0 && /font:\s*inherit/.test(rule[2])) {
+          throw new Error(`${name}: ${selectOnly.join(', ')} 重複宣告 font: inherit`);
+        }
+      }
+    },
+  );
+
+  // r2：移除 select 的 font: inherit 時，不能讓 button／input 的選擇器串併入下一條規則（#711 Reviewer r1）。
+  const PAGE_SCOPES = [
+    { file: 'CloudReportPage.css', scope: '.cloud-report' },
+    { file: 'CloudAccountHistoryPage.css', scope: '.cloud-account-history' },
+    { file: 'CloudDayClosePage.css', scope: '.cloud-day-close' },
+    { file: 'CloudDayVendorsPage.css', scope: '.cloud-day-vendors' },
+  ];
+  const pageRules = (name: string) =>
+    [...stripComments(readCss(name)).matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
+      selectors: match[1].split(',').map((selector: string) => selector.trim().replace(/\s+/g, ' ')),
+      body: match[2],
+    }));
+
+  it.each(PAGE_SCOPES)('$file 的 $scope button／input 仍繼承字型（font: inherit 規則完整）', ({ file, scope }) => {
+    const rules = pageRules(file);
+    for (const element of ['button', 'input']) {
+      const rule = rules.find(item => item.selectors.includes(`${scope} ${element}`) && /font:\s*inherit/.test(item.body));
+      expect(rule, `${file}: 缺少 ${scope} ${element} 的 font: inherit`).toBeDefined();
+    }
+  });
+
+  it.each(PAGE_SCOPES)('$file 的按鈕外框規則不含 input／select 選擇器（不誤套按鈕外觀與 cursor: pointer）', ({ file, scope }) => {
+    for (const rule of pageRules(file)) {
+      if (!/cursor:\s*pointer/.test(rule.body)) continue;
+      const stray = rule.selectors.filter((selector: string) => selector === `${scope} input` || selector === `${scope} select`);
+      expect(stray, `${file}: ${rule.selectors.join(', ')}`).toEqual([]);
+    }
+  });
+
+  it('cloud-select.css 在強制色彩（高對比）模式退回原生箭頭', () => {
+    const css = selectCss();
+    expect(css).toMatch(/@media\s*\(forced-colors:\s*active\)\s*\{[^@]*html\[data-app-mode="cloud"\]\s+select\s*\{[^}]*appearance:\s*auto/);
+  });
+
+  it('DateField.css 不再留下「頁面 CSS 有 select font: inherit」的過時註解', () => {
+    expect(readFileSync(resolve(UI_DIR, 'DateField.css'), 'utf8')).not.toMatch(/頁面 CSS 有 `font: inherit`/);
+  });
+});
+
