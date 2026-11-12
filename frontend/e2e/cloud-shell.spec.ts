@@ -88,3 +88,19 @@ test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ g
   }
   await release(page);
 });
+
+test('operator menu closes on an outside click (#704)', async ({ googleSession }) => {
+  const { page } = googleSession;
+  await enterSystem(page);
+  const menu = page.locator('.operator-menu');
+  await menu.locator('summary').click();
+  await expect(menu).toHaveAttribute('open', '');
+  await menu.getByLabel('主題').click({ trial: true });
+  await page.getByRole('main').click({ position: { x: 4, y: 300 } });
+  await expect(menu).not.toHaveAttribute('open', '');
+  // 再開一次，點選單內部不收起。
+  await menu.locator('summary').click();
+  await expect(menu).toHaveAttribute('open', '');
+  await menu.locator('.operator-menu__help').click();
+  await expect(menu).toHaveAttribute('open', '');
+});
