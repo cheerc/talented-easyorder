@@ -197,6 +197,9 @@ export function subscribeOperatorAccess(
       },
       err => {
         if (currentGeneration !== generation) return;
+        // #701: the listener has ended, so the next token refresh of this account must re-subscribe (normal path), not
+        // keep the dead subscription. Access stays denied until then.
+        subscribedUid = null;
         emitError({ source: 'auth', message: '[auth] operator onSnapshot error: ' + err.message });
         onAccess({ ok: false, reason: 'not_whitelisted', profile });
       },
