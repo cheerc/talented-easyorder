@@ -11,12 +11,6 @@ export default defineConfig({
     '**/ui-closeout.spec.ts',
     '**/scenarios.spec.ts',
   ],
-  testIgnore: [
-    '**/deposit-flow.spec.ts',
-    '**/expense-flow.spec.ts',
-    '**/order-flow.spec.ts',
-    '**/settlement-flow.spec.ts',
-  ],
   globalSetup: './e2e/global-setup.ts',
   timeout: 30000,
   retries: 0,

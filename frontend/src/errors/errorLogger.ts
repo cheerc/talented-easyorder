@@ -18,8 +18,7 @@ export interface ErrorLogEntry {
 // Keep this logger importable by repository probes that execute outside Vite
 // (for example, the P12c browser contract imports repositories in Node).
 const runtimeEnv = import.meta.env;
-const isPrototypeMode = runtimeEnv?.MODE === 'prototype';
-const isCloudMode = !isPrototypeMode && Boolean(
+const isCloudMode = Boolean(
   runtimeEnv?.VITE_FIREBASE_API_KEY
   && runtimeEnv.VITE_FIREBASE_AUTH_DOMAIN
   && runtimeEnv.VITE_FIREBASE_PROJECT_ID
@@ -27,7 +26,6 @@ const isCloudMode = !isPrototypeMode && Boolean(
   && runtimeEnv.VITE_FIREBASE_MESSAGING_SENDER_ID
   && runtimeEnv.VITE_FIREBASE_STORAGE_BUCKET,
 );
-const LOG_KEY = isPrototypeMode ? 'easyorder-error-log-prototype' : 'easyorder-error-log';
 export const SAFE_DIAGNOSTICS_STORAGE_KEY = isCloudMode
   ? 'easyorder-diagnostics-cloud'
   : 'easyorder-diagnostics-nonprototype';
@@ -84,29 +82,6 @@ const SYSTEM_CODE_BY_SOURCE: Record<SafeDiagnosticSource, SafeSystemDiagnosticCo
 const COMMAND_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COMMAND_ERROR_SET = new Set<string>(COMMAND_ERROR_CODES);
 const COMMAND_KIND_SET = new Set<string>(ALL_COMMAND_KINDS);
-
-// Error log 保留在 localStorage 而非 IndexedDB：
-// appendErrorLog 在 ErrorBoundary.componentDidCatch 與 global error listeners 中被同步呼叫，
-// 若改為 async IndexedDB 會導致 race condition（React render 與 error logging 交錯）。
-// 所有寫入的 entry 已通過 sanitizeMessage / sanitizeContext 去識別化，localStorage 可接受。
-
-const CONTEXT_ALLOW_LIST = new Set([
-  'component', 'action', 'route', 'businessDate', 'transactionType',
-  'syncStatus', 'errorCode', 'retryCount', 'deviceType', 'errorHint',
-]);
-
-function sanitizeContext(
-  context?: Record<string, string | number | boolean | null>,
-): Record<string, string | number | boolean | null> | undefined {
-  if (!context) return undefined;
-  const clean: Record<string, string | number | boolean | null> = {};
-  for (const [key, value] of Object.entries(context)) {
-    if (CONTEXT_ALLOW_LIST.has(key)) {
-      clean[key] = typeof value === 'string' ? sanitizeMessage(value) : value;
-    }
-  }
-  return Object.keys(clean).length > 0 ? clean : undefined;
-}
 
 export function sanitizeMessage(message: string): string {
   return message
@@ -186,7 +161,7 @@ function getLocalStorageSafely(): Storage | null {
 }
 
 function removeLegacyNonPrototypeLog(storage = getLocalStorageSafely()): boolean {
-  if (isPrototypeMode || !storage) return true;
+  if (!storage) return true;
   try {
     storage.removeItem(LEGACY_NON_PROTOTYPE_LOG_KEY);
     return true;
@@ -249,12 +224,10 @@ function persistSafeDiagnostic(entry: SafeDiagnosticEntry): SafeDiagnosticEntry 
 }
 
 export function readSafeDiagnostics(): SafeDiagnosticEntry[] {
-  if (isPrototypeMode) return [];
   return readSafeEnvelope().entries;
 }
 
 export function clearSafeDiagnostics(): boolean {
-  if (isPrototypeMode) return false;
   try {
     const storage = getLocalStorageSafely();
     if (!storage) return false;
@@ -270,7 +243,6 @@ export function appendCommandDiagnostic(input: {
   kind: unknown;
   errorCode: unknown;
 }): SafeCommandDiagnostic | null {
-  if (isPrototypeMode) return null;
   const commandId = typeof input.commandId === 'string' && COMMAND_ID_PATTERN.test(input.commandId) ? input.commandId : null;
   const kind = typeof input.kind === 'string' && COMMAND_KIND_SET.has(input.kind) ? input.kind as BusinessCommandKind : null;
   const errorCode = typeof input.errorCode === 'string' && COMMAND_ERROR_SET.has(input.errorCode)
@@ -312,54 +284,27 @@ function safeDiagnosticView(entry: SafeDiagnosticEntry, index = 0): ErrorLogEntr
 }
 
 export function appendErrorLog(entry: Omit<ErrorLogEntry, 'id' | 'createdAt'>): ErrorLogEntry {
-  if (!isPrototypeMode) {
-    removeLegacyNonPrototypeLog();
-    try {
-      return safeDiagnosticView(appendSystemDiagnostic(entry.source));
-    } catch {
-      return safeDiagnosticView({
-        type: 'system-error', source: 'runtime', systemCode: 'UNKNOWN_RUNTIME_ERROR', occurredAt: new Date().toISOString(),
-      });
-    }
+  removeLegacyNonPrototypeLog();
+  try {
+    return safeDiagnosticView(appendSystemDiagnostic(entry.source));
+  } catch {
+    return safeDiagnosticView({
+      type: 'system-error', source: 'runtime', systemCode: 'UNKNOWN_RUNTIME_ERROR', occurredAt: new Date().toISOString(),
+    });
   }
-
-  const next: ErrorLogEntry = {
-    ...entry,
-    message: sanitizeMessage(entry.message),
-    stack: entry.stack ? sanitizeStack(entry.stack) : undefined,
-    context: sanitizeContext(entry.context),
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-  };
-  const current = readErrorLog();
-  // Ref: #288 — TTL-based rotation: remove entries older than 24h
-  const cutoff = Date.now() - LOG_TTL_MS;
-  const fresh = current.filter(e => new Date(e.createdAt).getTime() > cutoff);
-  localStorage.setItem(LOG_KEY, JSON.stringify([next, ...fresh].slice(0, MAX_LOG_ENTRIES)));
-  return next;
 }
 
 export function readErrorLog(): ErrorLogEntry[] {
-  if (!isPrototypeMode) {
-    try {
-      return readSafeDiagnostics().map((entry, index) => safeDiagnosticView(entry, index));
-    } catch {
-      return [];
-    }
-  }
   try {
-    const raw = localStorage.getItem(LOG_KEY);
-    return raw ? JSON.parse(raw) as ErrorLogEntry[] : [];
+    return readSafeDiagnostics().map((entry, index) => safeDiagnosticView(entry, index));
   } catch {
     return [];
   }
 }
 
-
 export function clearErrorLog(): boolean {
-  const key = isPrototypeMode ? LOG_KEY : LEGACY_NON_PROTOTYPE_LOG_KEY;
   try {
-    localStorage.removeItem(key);
+    localStorage.removeItem(LEGACY_NON_PROTOTYPE_LOG_KEY);
     return true;
   } catch {
     return false;
@@ -406,4 +351,4 @@ const _unsubscribeErrorBus = onError(appendErrorLog);
 export { _unsubscribeErrorBus };
 
 // Retire only the exact old non-prototype key. The prototype namespace and unrelated storage remain untouched.
-if (!isPrototypeMode) removeLegacyNonPrototypeLog();
+removeLegacyNonPrototypeLog();

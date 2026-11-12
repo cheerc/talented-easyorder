@@ -1,18 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // 特性測試（characterization）：直接驅動真的 clearSensitivePosData()，檢查 storage 結果。
-// appMode 的 mock 同時提供 posStore／posPersistence 載入時會用到的 export，
-// 讓同一組測試在重構前（會載入 POS store）與重構後（不載入）都能通過。
-const mode = vi.hoisted(() => ({ isCloudMode: true }));
-
-vi.mock('../../appMode', () => Object.defineProperties({
-  getStorageMode: () => 'cloud',
-  isPrototypeMode: false,
-  namespacedStorageName: (name: string, storageMode: string) => (storageMode === 'cloud' ? `${name}-cloud` : name),
-}, {
-  isCloudMode: { enumerable: true, get: () => mode.isCloudMode },
-}));
-
+// #709 P2（R11）：isCloudMode guard 已移除，不再 mock appMode。
 import { clearSensitivePosData } from '../clearSensitivePosData';
 
 const CLOUD_POS_KEY = 'pos-storage-cloud';
@@ -47,7 +36,6 @@ function failRemoveItemFor(key: string) {
 
 describe('clearSensitivePosData（雲端登出清除特性測試）', () => {
   beforeEach(() => {
-    mode.isCloudMode = true;
     localStorage.clear();
   });
 
@@ -127,19 +115,6 @@ describe('clearSensitivePosData（雲端登出清除特性測試）', () => {
     await expect(clearSensitivePosData()).rejects.toThrow(
       '雲端暫存資料庫清除失敗。 舊版本機錯誤紀錄清除失敗。',
     );
-  });
-
-  it('非雲端模式（isCloudMode: false）完全不動 storage', async () => {
-    mode.isCloudMode = false;
-    localStorage.setItem(CLOUD_POS_KEY, 'keep');
-    localStorage.setItem(LEGACY_ERROR_LOG_KEY, 'keep');
-    const deleteSpy = vi.spyOn(window.indexedDB, 'deleteDatabase');
-
-    await clearSensitivePosData();
-
-    expect(deleteSpy).not.toHaveBeenCalled();
-    expect(localStorage.getItem(CLOUD_POS_KEY)).toBe('keep');
-    expect(localStorage.getItem(LEGACY_ERROR_LOG_KEY)).toBe('keep');
   });
 
   it('保留顯示偏好與安全診斷 key', async () => {

@@ -50,9 +50,9 @@ describe('appMode: 雲端模式判斷與儲存隔離', () => {
       expect(invalidResult.error).toContain('不可無聲降級為 local-only 儲存');
     }
 
-    // prototype 模式允許無 Firebase config
+    // #709：prototype 模式已移除，MODE=prototype 缺設定同樣 fail closed。
     const protoResult = validateAppModeConfig('prototype', {});
-    expect(protoResult.ok).toBe(true);
+    expect(protoResult.ok).toBe(false);
   });
 
   it('Cloud mode 禁止 seed / reset 入口', () => {

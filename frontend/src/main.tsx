@@ -3,16 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installErrorListeners } from './errors/errorLogger'
-import { applyAppModeAttribute, isPrototypeMode } from './appMode'
+import { applyAppModeAttribute } from './appMode'
 import { retireLegacyRuntimeCache } from './storage/retireLegacyRuntimeCache'
 
-// #648：雲端模式才套等比放大與雲端字型（prototype 不設屬性）。
-applyAppModeAttribute(document.documentElement, isPrototypeMode)
-
-// M0：瀏覽器分頁標題也標示本機練習，避免與一般模式混淆。
-if (isPrototypeMode) {
-  document.title = `本機練習 · ${document.title}`
-}
+// #648：套雲端的等比放大與字型。
+applyAppModeAttribute(document.documentElement)
 
 // Ref: #291 — Capture cleanup for HMR to prevent listener leaks.
 const cleanupErrorListeners = installErrorListeners();

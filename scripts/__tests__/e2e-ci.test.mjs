@@ -13,7 +13,7 @@ test('CI runs every existing Playwright configuration and Hosting smoke in isola
   const script = pkg.scripts['test:e2e'];
   const expected = ['playwright.config.ts', ...script.matchAll(/--config\s+(playwright\.[\w-]+\.config\.ts)/g)].map(x => typeof x === 'string' ? x : x[1]).sort();
   const required = [
-    'playwright.config.ts', 'playwright.p12c.config.ts', 'playwright.prototype.config.ts',
+    'playwright.config.ts', 'playwright.p12c.config.ts',
     'playwright.p13a.config.ts', 'playwright.p13a-dev.config.ts', 'playwright.p13a-no-config.config.ts',
     'playwright.p13b1.config.ts', 'playwright.p13b2.config.ts', 'playwright.keyboard.config.ts',
   ].sort();
