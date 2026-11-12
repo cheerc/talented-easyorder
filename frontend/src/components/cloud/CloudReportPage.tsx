@@ -1032,7 +1032,7 @@ export function CloudReportPage({
             <button type="button" aria-label="匯出稽核 CSV" disabled={controlsLocked} onClick={() => void exportAudit()}>匯出稽核 CSV</button>
           </div>
           <label>列印標示日期<select aria-label="列印標示日期" value={printDate} disabled={controlsLocked} onChange={event => setPrintDate(event.target.value)}>
-            {snapshot.report.days.map(day => <option key={day.businessDate} value={day.businessDate}>{day.businessDate}</option>)}
+            {snapshot.report.days.map(day => <option key={day.businessDate} value={day.businessDate}>{formatBusinessDate(day.businessDate)}</option>)}
           </select></label>
           <button type="button" disabled={controlsLocked || !snapshot.report.days.length} onClick={makePrint}>記錄後列印目前完整明細</button>
         </section>
