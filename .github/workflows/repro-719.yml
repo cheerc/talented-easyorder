@@ -1,0 +1,60 @@
+name: Repro 719 (throwaway, do not merge)
+
+on:
+  push:
+    branches: ['claude/issue-719-repro']
+
+jobs:
+  p13b2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ['0d47175d4a8513ffdb6eaf3869aa00a7598d397a', '32bf6a7e43964acd6911b5b2bc50c2f57ed54d1b']
+        mode: ['full-a', 'full-b', 'full-c', 'targeted']
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_FIREBASE_API_KEY: "dummy-api-key"
+      VITE_FIREBASE_AUTH_DOMAIN: "dummy-auth-domain"
+      VITE_FIREBASE_PROJECT_ID: "dummy-project-id"
+      VITE_FIREBASE_APP_ID: "dummy-app-id"
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+      VITE_FIREBASE_STORAGE_BUCKET: "dummy-bucket"
+      VITE_FIREBASE_USE_EMULATOR: "true"
+      VITE_FIRESTORE_EMULATOR_HOST: "127.0.0.1"
+      VITE_FIRESTORE_EMULATOR_PORT: "8080"
+      VITE_FIREBASE_AUTH_EMULATOR_URL: "http://127.0.0.1:9099"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - timeout-minutes: 9
+        run: npx playwright install-deps chromium
+      - timeout-minutes: 4
+        run: npx playwright install chromium
+      - name: Run p13b2 (full shard)
+        if: matrix.mode != 'targeted'
+        run: npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.p13b2.config.ts --trace retain-on-failure --reporter=list"
+      - name: Run p13b2 (targeted repeat)
+        if: matrix.mode == 'targeted'
+        run: npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config playwright.p13b2.config.ts --trace on --reporter=list --repeat-each=4 -g 'does not start the next backfill step|confirms a held RecordExport|confirms a held RecordPrint'"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ matrix.mode }}-${{ matrix.ref }}
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
