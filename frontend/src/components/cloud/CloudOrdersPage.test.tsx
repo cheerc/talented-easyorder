@@ -297,6 +297,8 @@ describe('CloudOrdersPage', () => {
       expect(reason).toHaveTextContent('今日尚未設定菜單');
       expect(reason.closest('[role="alert"]')).toBeNull();
       expect(reason.closest('.cloud-orders__error')).toBeNull();
+      // #708：便當資訊列內的小卡用精簡橫排（inline）。
+      expect(within(reason).getByRole('button', { name: /尚未設定菜單/ })).toHaveClass('action-card-ui--inline');
       fireEvent.click(within(reason).getByRole('button', { name: /尚未設定菜單.*F3/ }));
       expect(onOpenSettings).toHaveBeenCalledTimes(1);
     });
@@ -1115,6 +1117,8 @@ describe('CloudOrdersPage', () => {
     expect(blocked).toHaveTextContent('今日尚未開帳');
     expect(blocked).not.toHaveTextContent('日期與供應商');
     expect(blocked).not.toHaveClass('cloud-orders__error');
+    // #708：整頁被擋住用置中直排（hero）。
+    expect(within(blocked).getByRole('button', { name: /尚未開帳/ })).toHaveClass('action-card-ui--hero');
     fireEvent.click(within(blocked).getByRole('button', { name: /尚未開帳/ }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });

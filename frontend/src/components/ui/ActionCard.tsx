@@ -2,6 +2,9 @@ import React from 'react';
 import './ActionCard.css';
 import { Kbd } from './Kbd';
 
+/** hero：整頁被擋住時的置中直排主版面；inline：放在資訊列內的精簡橫排（膠囊緊接文字）。 */
+export type ActionCardLayout = 'hero' | 'inline';
+
 interface ActionCardProps {
   title: string;
   description?: string;
@@ -9,18 +12,19 @@ interface ActionCardProps {
   actionLabel: string;
   icon?: React.ReactNode;
   kbd?: string;
+  layout?: ActionCardLayout;
   onClick: () => void;
   disabled?: boolean;
   className?: string;
 }
 
 /** 整張是一個 button 的大卡片；accessible name 為「標題，說明，動作」，Kbd 只供視覺提示。 */
-export function ActionCard({ title, description, actionLabel, icon, kbd, onClick, disabled, className = '' }: ActionCardProps) {
+export function ActionCard({ title, description, actionLabel, icon, kbd, layout = 'hero', onClick, disabled, className = '' }: ActionCardProps) {
   const name = [title, description, actionLabel].filter(Boolean).join('，');
   return (
     <button
       type="button"
-      className={['action-card-ui', className].filter(Boolean).join(' ')}
+      className={['action-card-ui', `action-card-ui--${layout}`, className].filter(Boolean).join(' ')}
       aria-label={name}
       onClick={onClick}
       disabled={disabled}

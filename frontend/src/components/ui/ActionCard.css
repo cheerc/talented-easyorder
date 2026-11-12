@@ -67,3 +67,70 @@
   font-size: var(--t-xs);
   font-weight: 600;
 }
+
+/* hero：依核准的 F1 mockup（docs/assets/ui-style/f1-counter-mockup.html .cta），置中直排；
+   虛線強調色外框表示「待完成的設定步驟」，不是錯誤。 */
+.action-card-ui--hero {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--s3);
+  padding: var(--s6) var(--s5);
+  border: 2px dashed var(--accent);
+  background: var(--accent-soft);
+  text-align: center;
+  transition: background .15s, transform .15s;
+}
+
+.action-card-ui--hero:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent-soft), var(--accent) 12%);
+}
+
+.action-card-ui--hero:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.action-card-ui--hero .action-card-ui__icon svg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.action-card-ui--hero .action-card-ui__text {
+  flex: none;
+  align-items: center;
+}
+
+.action-card-ui--hero .action-card-ui__title {
+  font-size: var(--t-2xl);
+  line-height: 1.2;
+}
+
+.action-card-ui--hero .action-card-ui__desc {
+  font-size: var(--t-lg);
+}
+
+.action-card-ui--hero .action-card-ui__cta {
+  margin-top: var(--s2);
+}
+
+.action-card-ui--hero .action-card-ui__pill {
+  padding: var(--s3) var(--s5);
+  background: var(--accent-ink);
+  color: var(--bg);
+  font-size: var(--t-lg);
+}
+
+/* inline：橫排，文字區不撐滿，膠囊緊接在說明右側。 */
+.action-card-ui--inline .action-card-ui__text {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-card-ui--hero {
+    transition: none;
+  }
+
+  .action-card-ui--hero:active:not(:disabled) {
+    transform: none;
+  }
+}
