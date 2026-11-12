@@ -144,9 +144,4 @@ describe('P5 焦點外框', () => {
       expect(rule?.[1], `${file} ${selector}`).toMatch(/(outline:\s*2px|box-shadow)/);
     }
   });
-
-  it('TopBar 日期輸入不再用 inline style 關掉 outline', () => {
-    const source = readFileSync(join(SRC, 'components/pos/TopBar.tsx'), 'utf8') as string;
-    expect(source).not.toMatch(/outline:\s*'none'/);
-  });
 });

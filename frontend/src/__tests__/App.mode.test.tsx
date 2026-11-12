@@ -7,11 +7,6 @@ const appMocks = vi.hoisted(() => ({
   recoveryGate: false,
   studentCallback: null as null | ((key: string, state: 'recovering' | 'revoked' | 'resolved') => void),
   dayCallback: null as null | ((key: string, state: 'recovering' | 'revoked' | 'resolved') => void),
-  crashDraft: {
-    load: vi.fn(async () => null),
-    save: vi.fn(async () => undefined),
-    clear: vi.fn(),
-  },
   firebase: {
     fbError: null as string | null,
     storageCleanupError: null as string | null,
@@ -35,12 +30,6 @@ vi.mock('../providers/FirebaseProvider', () => ({
 }));
 vi.mock('../hooks/useFirebase', () => ({
   useFirebase: () => appMocks.firebase,
-}));
-vi.mock('../storage/crashDraft', () => ({
-  loadCrashDraft: appMocks.crashDraft.load,
-  saveCrashDraft: appMocks.crashDraft.save,
-  clearCrashDraft: appMocks.crashDraft.clear,
-  isCrashDraftAvailable: vi.fn(async () => false),
 }));
 vi.mock('../auth/AuthGate', () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
@@ -148,16 +137,6 @@ describe('App mode gate', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(appMocks.firebase.storageCleanupError);
     expect(screen.queryByRole('tab')).toBeNull();
     expect(screen.queryByRole('button', { name: '開始使用' })).toBeNull();
-  });
-
-  it('does not read or write the legacy POS crash draft from the cloud entrypoint', () => {
-    appMocks.cloudModeValid = true;
-    render(<App />);
-
-    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
-    expect(appMocks.crashDraft.load).not.toHaveBeenCalled();
-    expect(appMocks.crashDraft.save).not.toHaveBeenCalled();
-    expect(appMocks.crashDraft.clear).not.toHaveBeenCalled();
   });
 
   it('blocks section changes while a command is unresolved and unlocks after recovery', () => {

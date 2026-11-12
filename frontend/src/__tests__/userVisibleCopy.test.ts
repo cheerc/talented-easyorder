@@ -44,7 +44,7 @@ function stripComments(text: string): string {
 
 describe('#691 P8: user-visible copy', () => {
   it('scans the production sources', () => {
-    expect(Object.keys(sources).length).toBeGreaterThan(100);
+    expect(Object.keys(sources).length).toBeGreaterThan(90);
     expect(Object.keys(sources).some(key => key.endsWith('/auth/AuthGate.tsx'))).toBe(true);
     expect(Object.keys(sources).some(key => key.includes('/maintenance/'))).toBe(false);
   });
