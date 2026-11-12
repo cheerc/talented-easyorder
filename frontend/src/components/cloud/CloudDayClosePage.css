@@ -10,8 +10,7 @@
 
 .cloud-day-close button,
 .cloud-day-close input,
-.cloud-day-close textarea,
-.cloud-day-close select {
+.cloud-day-close textarea {
   font: inherit;
 }
 

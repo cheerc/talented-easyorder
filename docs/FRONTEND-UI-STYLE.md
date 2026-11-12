@@ -42,6 +42,10 @@
 - `StatTile`：標籤＋大數字（等寬）；`warn` 只給需要處理的數字。
 - `DateField`：單日「營業日」控制項，F1／F2／F3 共用，標籤固定為「營業日」；外觀取 F2 日結日期列（等寬字、`--t-lg`、最小高度 3rem）。三種變體：`date`（原生日期，輸入中不載入、Enter 或離開欄位才確認，滑鼠選日期立刻確認）、`select`（選項由頁面提供，F1 用）、`static`（唯讀、同外觀）；右側 `status` slot 由頁面放狀態徽章與今天／過去日期／未來日期；`size="compact"` 給較小的標題列。新頁面要選單日營業日時用它，不要自己寫日期列。
 
+## 原生 select 基線（#706）
+
+雲端所有原生 `<select>` 共用 `frontend/src/styles/cloud-select.css`（限 `html[data-app-mode="cloud"]`，prototype 不受影響）：`appearance: none`、用 CSS 自畫向下三角箭頭（顏色 `--ink-2`，停用 `--ink-3`，三主題通用，不硬寫色碼）、`padding-right` 預留箭頭空間、`font: inherit`（低 specificity，各頁字級優先）。頁面與 `DateField` 只管自己的高度、字級、左內距與外框；**不要**在頁面 CSS 再處理箭頭或 `padding-right`，背景請用 `background-color`，不要用 `background` 簡寫（會清掉箭頭）。守門：`cloudPagesCss.test.ts` 的「#706 雲端 select 共用基線」。
+
 ## HelpTip 與 Callout 的分類（依語意，不依現有 class）
 
 - 涉及金額、不可逆、資料遺失、重複收款風險、阻擋操作的原因 → `Callout`，常駐可見。

@@ -12,8 +12,7 @@
 
 .cloud-day-vendors button,
 .cloud-day-vendors input,
-.cloud-day-vendors textarea,
-.cloud-day-vendors select {
+.cloud-day-vendors textarea {
   font: inherit;
 }
 
