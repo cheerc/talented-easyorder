@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useState, type ReactNode } from 'react';
 
 const appMocks = vi.hoisted(() => ({
+  reloadToCounter: vi.fn(),
+  isCounterStart: vi.fn(() => false),
+  clearCounterStart: vi.fn(),
   cloudModeValid: false,
   recoveryGate: false,
   studentCallback: null as null | ((key: string, state: 'recovering' | 'revoked' | 'resolved') => void),
@@ -37,10 +40,17 @@ vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
   CloudPendingRecoveryBoundary: ({ children }: { children: (hasUnresolvedPendingCommands: boolean) => ReactNode }) => <div inert={appMocks.recoveryGate}>{children(false)}</div>,
 }));
 
+// jsdom 不能真的重新整理；整頁重新整理由 e2e 驗證。
+vi.mock('../utils/counterReload', () => ({
+  reloadToCounter: appMocks.reloadToCounter,
+  isCounterStart: appMocks.isCounterStart,
+  clearCounterStart: appMocks.clearCounterStart,
+}));
+
 vi.mock('../components/cloud/CloudOrdersPage', () => ({
-  CloudOrdersPage: function Orders({ onViewDayChange, onOpenSettings }: { onViewDayChange?: (date: string, backfill: boolean) => void; onOpenSettings?: () => void }) {
+  CloudOrdersPage: function Orders({ onOpenSettings }: { onOpenSettings?: () => void }) {
     const [selected, setSelected] = useState(false);
-    return <section aria-label="mock orders page"><button onClick={() => onViewDayChange?.('2026-10-01', true)}>測試補登日</button><button onClick={() => onOpenSettings?.()}>到今日設定</button>{selected
+    return <section aria-label="mock orders page"><button onClick={() => onOpenSettings?.()}>到今日設定</button>{selected
       ? <form aria-label="訂餐"><input aria-label="金額" /></form>
       : <><input id="cloud-student-search" aria-label="搜尋" /><button onClick={() => setSelected(true)}>選擇學生</button></>}
     </section>;
@@ -98,6 +108,8 @@ import { act } from '@testing-library/react';
 import { useUiTweaksStore } from '../store/uiTweaksStore';
 import { OperatorContext } from '../auth/OperatorContext';
 
+const BRAND_NAME = '訂餐櫃台，回到櫃台並重新整理';
+
 describe('App mode gate', () => {
   beforeEach(() => {
     appMocks.cloudModeValid = false;
@@ -107,6 +119,7 @@ describe('App mode gate', () => {
     appMocks.firebase.lease = { epoch: 4 };
     appMocks.firebase.autoSignOutDue = false;
     vi.clearAllMocks();
+    appMocks.isCounterStart.mockReturnValue(false);
   });
 
   it('fails closed when non-prototype mode has incomplete Firebase configuration', () => {
@@ -439,16 +452,95 @@ describe('cloud navigation contract', () => {
     expect(screen.getByRole('dialog', { name: '離開並捨棄草稿？' })).toBeVisible();
   });
 
-  it('does not show a previous backfill date while a newly mounted cashier is loading', () => {
-    appMocks.cloudModeValid = true;
-    render(<App />);
-    fireEvent.keyDown(window, { key: 'F1' });
-    fireEvent.click(screen.getByRole('button', { name: '測試補登日' }));
-    expect(screen.getByText('補登 2026-10-01')).toBeVisible();
-    fireEvent.keyDown(window, { key: 'F3' });
-    fireEvent.keyDown(window, { key: 'F1' });
-    expect(screen.queryByText('補登 2026-10-01')).not.toBeInTheDocument();
-    expect(screen.getByText('營業日未確認')).toBeVisible();
+  describe('#710: the brand is one button that returns to the counter and reloads the whole app', () => {
+    it('is a real button named for its action, and the header shows no business date', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      const brand = screen.getByRole('button', { name: BRAND_NAME });
+      expect(brand).toBeEnabled();
+      expect(brand).toHaveTextContent('訂餐櫃台');
+      const header = brand.closest('header')!;
+      expect(header).not.toHaveTextContent('營業日未確認');
+      expect(header.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+      expect(header.querySelector('.brand-sub')).toBeNull();
+    });
+
+    it('reloads once when clicked with no draft', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: BRAND_NAME }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(appMocks.reloadToCounter).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks before discarding a draft: cancel keeps everything, confirm reloads once', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      fireEvent.change(screen.getByLabelText('測試草稿'), { target: { value: '987' } });
+      fireEvent.click(screen.getByRole('button', { name: BRAND_NAME }));
+      expect(screen.getByRole('dialog', { name: '離開並捨棄草稿？' })).toBeVisible();
+      expect(appMocks.reloadToCounter).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: '取消離開' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(appMocks.reloadToCounter).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('測試草稿')).toHaveValue('987');
+      fireEvent.click(screen.getByRole('button', { name: BRAND_NAME }));
+      fireEvent.click(screen.getByRole('button', { name: '捨棄草稿' }));
+      expect(appMocks.reloadToCounter).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks like the F1 tab does when an order form is selected on the counter page', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      fireEvent.keyDown(window, { key: 'F1' });
+      fireEvent.click(screen.getByRole('button', { name: '選擇學生' }));
+      fireEvent.click(screen.getByRole('button', { name: BRAND_NAME }));
+      expect(screen.getByRole('dialog', { name: '離開並捨棄草稿？' })).toBeVisible();
+      expect(appMocks.reloadToCounter).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: '捨棄草稿' }));
+      expect(appMocks.reloadToCounter).toHaveBeenCalledTimes(1);
+    });
+
+    it('is disabled and does nothing while a command is unresolved', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: '保持待確認命令' }));
+      const brand = screen.getByRole('button', { name: BRAND_NAME });
+      expect(brand).toBeDisabled();
+      fireEvent.click(brand);
+      expect(appMocks.reloadToCounter).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
+      expect(brand).toBeEnabled();
+    });
+
+    it('does nothing while the recovery gate makes the page inert', () => {
+      appMocks.cloudModeValid = true;
+      appMocks.recoveryGate = true;
+      try {
+        render(<App />);
+        fireEvent.click(screen.getByRole('button', { name: BRAND_NAME }));
+        expect(appMocks.reloadToCounter).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      } finally {
+        appMocks.recoveryGate = false;
+      }
+    });
+
+    it('lands on the counter once after the brand reload and clears the one-shot marker', () => {
+      appMocks.cloudModeValid = true;
+      appMocks.isCounterStart.mockReturnValue(true);
+      render(<App />);
+      expect(screen.getByRole('region', { name: 'mock orders page' })).toBeVisible();
+      expect(screen.queryByRole('region', { name: 'mock students page' })).not.toBeInTheDocument();
+      expect(appMocks.clearCounterStart).toHaveBeenCalled();
+    });
+
+    it('keeps the students page as the default landing when there is no marker', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+      expect(appMocks.clearCounterStart).not.toHaveBeenCalled();
+    });
   });
 
   it('asks before discarding an active cashier draft when F1 returns to search', () => {

@@ -89,6 +89,40 @@ test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ g
   await release(page);
 });
 
+test('the brand button returns to the counter and reloads the whole app (#710)', async ({ googleSession }) => {
+  const { page } = googleSession;
+  await enterSystem(page);
+  await settings(page, '學生');
+  const brand = page.getByRole('button', { name: '訂餐櫃台，回到櫃台並重新整理' });
+  await expect(page.locator('.brand-sub')).toHaveCount(0);
+  await expect(brand).toBeEnabled();
+
+  // 滑鼠：整頁重新載入（頁面上的標記消失）並落在 F1 櫃台，網址不留 #counter。
+  await page.evaluate(() => { (window as unknown as { __beforeBrandReload?: number }).__beforeBrandReload = 1; });
+  await Promise.all([page.waitForEvent('load'), brand.click()]);
+  await enterSystem(page);
+  expect(await page.evaluate(() => (window as unknown as { __beforeBrandReload?: number }).__beforeBrandReload)).toBeUndefined();
+  await expect(page.getByRole('main', { name: '雲端櫃台點餐' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect.poll(() => new URL(page.url()).hash).toBe('');
+
+  // 鍵盤：品牌可聚焦，Enter 同樣整頁重新載入。
+  await settings(page, '學生');
+  await page.evaluate(() => { (window as unknown as { __beforeBrandReload?: number }).__beforeBrandReload = 2; });
+  await brand.focus();
+  await expect(brand).toBeFocused();
+  await Promise.all([page.waitForEvent('load'), page.keyboard.press('Enter')]);
+  await enterSystem(page);
+  expect(await page.evaluate(() => (window as unknown as { __beforeBrandReload?: number }).__beforeBrandReload)).toBeUndefined();
+  await expect(page.getByRole('main', { name: '雲端櫃台點餐' })).toBeVisible();
+
+  // 沒有帶標記的重新整理（Ctrl+R）維持原本落點，不回櫃台。
+  await page.reload();
+  await enterSystem(page);
+  await expect(page.getByRole('main', { name: '雲端學生管理' })).toBeVisible();
+  await release(page);
+});
+
 test('operator menu closes on an outside click (#704)', async ({ googleSession }) => {
   const { page } = googleSession;
   await enterSystem(page);

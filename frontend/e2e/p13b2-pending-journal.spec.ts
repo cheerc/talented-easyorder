@@ -302,6 +302,19 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     expect(await page.evaluate(key => localStorage.getItem(key), `${APP_NAMESPACE}:${commandId}`)).toBe(stored.raw);
+
+    // #710 High-Risk：品牌按鈕整頁重新整理後，未確認的日誌紀錄原樣保留並再次被擋下核對，不新增命令。
+    const commandsBeforeBrandReload = await listEmulatorDocumentIds('commands');
+    const brand = page.getByRole('button', { name: '訂餐櫃台，回到櫃台並重新整理' });
+    await expect(brand).toBeEnabled();
+    await Promise.all([page.waitForEvent('load'), brand.click()]);
+    await enterSystem(page);
+    await expect(page.getByRole('heading', { name: '待核對命令' })).toBeVisible();
+    await page.getByText('技術資訊').click();
+    await expect(page.getByText(commandId)).toBeVisible();
+    expect(await page.evaluate(key => localStorage.getItem(key), `${APP_NAMESPACE}:${commandId}`)).toBe(stored.raw);
+    expect(await page.evaluate(prefix => Object.keys(localStorage).filter(key => key.startsWith(prefix)), `${APP_NAMESPACE}:`)).toEqual([`${APP_NAMESPACE}:${commandId}`]);
+    expect(await listEmulatorDocumentIds('commands')).toEqual(commandsBeforeBrandReload);
   });
 
   test('renders a complete 101-record journal as two bounded UI pages', async ({ googleSession }) => {
@@ -1756,6 +1769,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.locator('.cloud-day-vendors__alert')).toContainText(/伺服器資料集或營業日已變更/);
       await expect(page.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '訂餐櫃台，回到櫃台並重新整理' })).toBeDisabled();
       await expect(page.getByText(new RegExp(`已確認 設定 ${today} 菜單 完成`))).toHaveCount(0);
       expect(writeResponseReturned).toBe(true);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
@@ -1977,6 +1991,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
       await expect(page.getByRole('heading', { name: `${withWeekday(today)} 日結` })).toHaveCount(0);
       await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '訂餐櫃台，回到櫃台並重新整理' })).toBeDisabled();
 
       await page.getByRole('button', { name: '重新載入伺服器資料' }).first().click();
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
