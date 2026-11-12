@@ -2,10 +2,10 @@ import type { PersistOptions, PersistStorage, StorageValue } from 'zustand/middl
 import type { PosState } from './posTypes';
 import { migratePersistedState } from '../storage/migration';
 import { validatePersistedState } from '../storage/posStateValidator';
-import { appendErrorLog, clearErrorLog } from '../errors/errorLogger';
+import { appendErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
 import { createIndexedDBStorage } from '../storage/indexedDBStorage';
-import { getStorageMode, isCloudMode, isPrototypeMode, namespacedStorageName, type StorageMode } from '../appMode';
+import { getStorageMode, isPrototypeMode, namespacedStorageName, type StorageMode } from '../appMode';
 
 // TODO: [future] encrypt sensitive fields before IndexedDB persist (#286)
 
@@ -27,42 +27,6 @@ export function createMemoryStorage(): PersistStorage<unknown> {
       memoryMap.delete(name);
     },
   };
-}
-
-/**
- * Ref: #286 — Clear sensitive POS data from IndexedDB and localStorage on signOut.
- * On shared kiosk/iPad devices, this prevents student PII (names, balances,
- * transactions) from persisting after the operator signs out.
- */
-export async function clearSensitiveData(): Promise<void> {
-  // Cloud operator/logout cleanup must never erase the separate prototype/local namespace.
-  if (!isCloudMode) return;
-
-  const cleanupErrors: string[] = [];
-  // Cloud POS persistence is memory-only today; clear only its cloud crash-draft namespace.
-  if (typeof indexedDB !== 'undefined') {
-    const crashDbName = namespacedStorageName('easyorder-crash-draft', 'cloud');
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase(crashDbName);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(new Error('雲端暫存資料庫清除失敗。'));
-        request.onblocked = () => reject(new Error('雲端暫存資料庫仍被其他分頁使用。請關閉其他 EasyOrder 分頁後重新載入。'));
-      });
-    } catch (error) {
-      cleanupErrors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  try {
-    // Remove only the Cloud namespace; prototype/local-only data remain intact.
-    localStorage.removeItem(namespacedStorageName('pos-storage', 'cloud'));
-    if (!clearErrorLog()) cleanupErrors.push('舊版本機錯誤紀錄清除失敗。');
-  } catch (error) {
-    cleanupErrors.push(error instanceof Error ? error.message : String(error));
-  }
-
-  if (cleanupErrors.length > 0) throw new Error(cleanupErrors.join(' '));
 }
 
 export const defaultState = {
