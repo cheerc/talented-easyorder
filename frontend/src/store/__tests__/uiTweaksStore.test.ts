@@ -321,7 +321,6 @@ describe('uiTweaksStore', () => {
       // Simulated POS cleanup: removing pos-storage and pos-storage-cloud
       localStorage.removeItem('pos-storage');
       localStorage.removeItem('pos-storage-cloud');
-      localStorage.removeItem('pos-storage-prototype');
 
       const storedAfter = localStorage.getItem(UI_TWEAKS_STORAGE_KEY);
       expect(storedAfter).toBe(storedBefore);

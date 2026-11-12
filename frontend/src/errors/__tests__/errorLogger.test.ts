@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeMessage, sanitizeStack } from '../errorLogger';
+import { sanitizeMessage } from '../errorLogger';
 
 // #709：自由文字 logger（prototype 專用）已移除；appendErrorLog 只寫安全診斷（見 safeDiagnostics.test.ts）。
 // 這裡保留仍被使用的去識別化函式（ErrorBoundary 用 sanitizeMessage）。
@@ -56,35 +56,5 @@ describe('sanitizeMessage', () => {
     expect(message).toContain('filename: app.tsx');
     expect(message).not.toContain('John Smith');
     expect(message).toContain('name: [REDACTED]');
-  });
-});
-
-describe('sanitizeStack (#288)', () => {
-  it('strips Unix absolute file paths from stack traces', () => {
-    const stack = 'Error: fail\n    at Module (/Users/cheerc/talented-easyorder/frontend/src/App.tsx:42:5)';
-    const result = sanitizeStack(stack);
-    expect(result).not.toContain('/Users/cheerc');
-    expect(result).toContain('[PATH]');
-  });
-
-  it('strips Windows file paths from stack traces', () => {
-    const stack = 'Error: fail\n    at C:\\Users\\dev\\project\\src\\index.ts:10:3';
-    const result = sanitizeStack(stack);
-    expect(result).not.toContain('C:\\Users\\dev');
-    expect(result).toContain('[PATH]');
-  });
-
-  it('strips node_modules paths', () => {
-    const stack = 'at node_modules/firebase/auth/dist/index.js:123:45';
-    const result = sanitizeStack(stack);
-    expect(result).not.toContain('node_modules/firebase');
-    expect(result).toContain('[MODULE]');
-  });
-
-  it('also applies message sanitization (PII patterns)', () => {
-    const stack = 'Error: 學生: 王小明\n    at /Users/cheerc/src/App.tsx:1:1';
-    const result = sanitizeStack(stack);
-    expect(result).toContain('[REDACTED]');
-    expect(result).not.toContain('王小明');
   });
 });

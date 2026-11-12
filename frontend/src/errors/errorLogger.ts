@@ -96,17 +96,6 @@ export function sanitizeMessage(message: string): string {
     .replace(/[A-Z]\d{9}/g, '[ID REDACTED]');
 }
 
-// Ref: #288 — Strip file paths and user-home directories from stack traces.
-// Prevents leaking OS username, project paths, and internal file structure.
-export function sanitizeStack(stack: string): string {
-  return sanitizeMessage(stack)
-    // Strip absolute file paths (Unix and Windows)
-    .replace(/(?:\/[\w.-]+){2,}/g, '[PATH]')
-    .replace(/(?:[A-Z]:\\[\w\\.-]+)/gi, '[PATH]')
-    // Strip webpack/vite internal paths
-    .replace(/\b(?:node_modules|__vite_ssr_import__)[\w/.\\-]*/g, '[MODULE]');
-}
-
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
   const expected = [...keys].sort();

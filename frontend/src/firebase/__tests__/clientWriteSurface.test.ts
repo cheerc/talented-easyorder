@@ -50,7 +50,7 @@ const filesWithWrites = () => Object.entries(sources)
 describe('P16a client write surface', () => {
   it('scans the production sources and finds the two allowed writers, so the guard is not vacuous', () => {
     const names = Object.keys(sources).map(relativeName);
-    expect(names.length).toBeGreaterThan(100);
+    expect(names.length).toBeGreaterThan(90);
     for (const allowed of WRITE_ALLOWLIST) expect(names, allowed).toContain(allowed);
     expect(names.some(name => name.includes('__tests__') || /\.(test|spec)\./.test(name) || name.startsWith('maintenance/'))).toBe(false);
   });

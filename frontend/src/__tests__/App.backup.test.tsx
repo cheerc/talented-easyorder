@@ -29,7 +29,6 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../appMode', async importOriginal => ({
   ...(await importOriginal<typeof import('../appMode')>()),
-  isPrototypeMode: false,
   validateAppModeConfig: () => ({ ok: true as const }),
 }));
 vi.mock('../providers/FirebaseProvider', () => ({
