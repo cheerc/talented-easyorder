@@ -4,7 +4,7 @@ import { Kbd } from '../ui/Kbd';
 import { isCompositionKey } from '../navigationKeys';
 import { Button } from '../ui/Button';
 import { Toast } from '../ui/Toast';
-import { ActionCard } from '../ui/ActionCard';
+import { ActionCard, type ActionCardLayout } from '../ui/ActionCard';
 import { Callout } from '../ui/Callout';
 import { DateField } from '../ui/DateField';
 import { HelpTip } from '../ui/HelpTip';
@@ -1740,8 +1740,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const bentoCount = day?.totals.bentoCount ?? 0;
   const otherMealCount = day?.totals.otherMealCount ?? 0;
-  const menuMissingCard = (
+  const renderMenuMissingCard = (layout: ActionCardLayout) => (
     <ActionCard
+      layout={layout}
       icon={<UtensilsCrossed size={32} strokeWidth={1.6} />}
       title={backfillView ? `${businessDate} 尚未設定菜單` : '今日尚未設定菜單'}
       description={`${businessDate}・設定後就能訂購${backfillView ? '當日' : '今日'}餐點`}
@@ -1926,6 +1927,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               // A day not opened yet is a setup step, not an error: one big card to menu/opening (F3; #581 D5, #648 P2).
               <div className="cloud-orders__blocked-card" data-testid="ordering-blocked">
                 <ActionCard
+                  layout="hero"
                   icon={<CalendarPlus size={32} strokeWidth={1.6} />}
                   title={backfillView ? `${businessDate} 尚未開帳` : '今日尚未開帳'}
                   description={`${businessDate}・設定後就能開始點餐`}
@@ -1940,7 +1942,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             {!selectedStudent && !dayMissing && (
               <>
                 {!todayMenu && !orderingBlocked && (
-                  <div className="cloud-orders__blocked-card" data-testid="orders-menu-unavailable">{menuMissingCard}</div>
+                  <div className="cloud-orders__blocked-card" data-testid="orders-menu-unavailable">{renderMenuMissingCard('hero')}</div>
                 )}
                 <div className="cloud-orders__idle-row">
                   <div className="cloud-orders__search-group">
@@ -2203,7 +2205,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                             <span className="cloud-orders__bento-price mono">單價：${todayMenu.price}</span>
                           </p>
                         ) : (
-                          <div className="cloud-orders__blocked-card cloud-orders__blocked-card--inline" data-testid="orders-menu-unavailable">{menuMissingCard}</div>
+                          <div className="cloud-orders__blocked-card cloud-orders__blocked-card--inline" data-testid="orders-menu-unavailable">{renderMenuMissingCard('inline')}</div>
                         )}
                       </div>
                     )}
