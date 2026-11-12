@@ -9,7 +9,7 @@
   box-shadow: 0 12px 36px rgba(20, 33, 48, .07);
 }
 .cloud-account-history button,
-.cloud-account-history input,
+.cloud-account-history input { font: inherit; }
 .cloud-account-history button:not(.help-tip-ui__btn) { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: inherit; cursor: pointer; }
 .cloud-account-history button:not(.help-tip-ui__btn):disabled { cursor: not-allowed; opacity: .5; }
 .cloud-account-history label { display: inline-grid; gap: 5px; margin: 4px 12px 4px 0; font-weight: 650; }

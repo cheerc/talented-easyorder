@@ -336,7 +336,8 @@ describe('#706 雲端 select 共用基線', () => {
   });
 
   it('每個選擇器都限定在雲端模式（prototype 的 select 不受影響）', () => {
-    const selectors = rules().flatMap(rule => rule.selector.split(',').map(s => s.trim()));
+    // @media 等 at-rule 的前言不是選擇器（其內的規則由下一個測試單獨檢查）。
+    const selectors = rules().flatMap(rule => rule.selector.split(',').map(s => s.trim())).filter(s => !s.startsWith('@'));
     expect(selectors.length).toBeGreaterThan(0);
     for (const selector of selectors) expect(selector).toContain('[data-app-mode="cloud"]');
   });

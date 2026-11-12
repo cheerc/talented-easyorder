@@ -10,7 +10,7 @@
 }
 
 .cloud-report button,
-.cloud-report input,
+.cloud-report input { font: inherit; }
 .cloud-report button:not(.help-tip-ui__btn) { min-height: 2.25rem; padding: var(--s2) var(--s3); font-size: var(--t-xs); border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); cursor: pointer; }
 .cloud-report button:not(.help-tip-ui__btn):disabled { cursor: not-allowed; opacity: .5; }
 .cloud-report label { display: inline-flex; align-items: center; gap: var(--s2); margin: var(--s1) var(--s3) var(--s1) 0; font-size: var(--t-sm); font-weight: 650; }

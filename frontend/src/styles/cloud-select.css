@@ -28,3 +28,12 @@ html[data-app-mode="cloud"] select {
 html[data-app-mode="cloud"] select:disabled {
   --select-chevron: var(--ink-3);
 }
+
+/* 強制色彩（Windows 高對比）會忽略背景圖，自畫箭頭會消失：退回原生外觀，使用者仍有箭頭。 */
+@media (forced-colors: active) {
+  html[data-app-mode="cloud"] select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    padding-right: var(--s3);
+  }
+}
