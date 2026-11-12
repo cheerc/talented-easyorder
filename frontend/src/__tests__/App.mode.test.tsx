@@ -253,6 +253,38 @@ describe('App mode gate', () => {
     });
   });
 
+  describe('#705: F-key / Alt+digit navigation keeps the keyboard focus on the active tab', () => {
+    it('moves the focus from the tab the mouse left it on to the newly active tab', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      const tabs = screen.getByRole('navigation', { name: '主要導覽' });
+      const counter = screen.getByRole('button', { name: '櫃台' });
+      counter.focus();
+
+      fireEvent.keyDown(window, { key: 'F2' });
+
+      const report = screen.getByRole('button', { name: '今日帳' });
+      expect(report).toHaveAttribute('aria-current', 'page');
+      expect(document.activeElement).toBe(report);
+      expect(tabs.contains(document.activeElement)).toBe(true);
+
+      fireEvent.keyDown(window, { code: 'Digit4', key: '¢', altKey: true });
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '供應商' }));
+    });
+
+    it('does not pull the focus into the tabs when it is somewhere else', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      const summary = document.querySelector('.operator-menu summary') as HTMLElement;
+      summary.focus();
+
+      fireEvent.keyDown(window, { key: 'F2' });
+
+      expect(screen.getByRole('button', { name: '今日帳' })).toHaveAttribute('aria-current', 'page');
+      expect(document.activeElement).toBe(summary);
+    });
+  });
+
   describe('#691 P9: the fixed eight hours end in the normal sign-out', () => {
     const operator = (signOut: () => void) => ({ name: '測試操作員', epoch: 4, signOut });
     const renderApp = (signOut: () => void) => render(<OperatorContext.Provider value={operator(signOut)}><App /></OperatorContext.Provider>);
