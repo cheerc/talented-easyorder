@@ -88,3 +88,50 @@ test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ g
   }
   await release(page);
 });
+
+test('operator menu closes on an outside click (#704)', async ({ googleSession }) => {
+  const { page } = googleSession;
+  await enterSystem(page);
+  const menu = page.locator('.operator-menu');
+  await menu.locator('summary').click();
+  await expect(menu).toHaveAttribute('open', '');
+  await page.locator('.brand-name').click();
+  await expect(menu).not.toHaveAttribute('open', '');
+  // 再開一次，點選單內部不收起。
+  await menu.locator('summary').click();
+  await expect(menu).toHaveAttribute('open', '');
+  await menu.locator('.operator-menu__help').click();
+  await expect(menu).toHaveAttribute('open', '');
+});
+
+test('F-key navigation moves the tab focus with the page and the ring is not clipped (#705)', async ({ googleSession }) => {
+  const { page } = googleSession;
+  await enterSystem(page);
+  const nav = page.getByRole('navigation', { name: '主要導覽' });
+  await nav.getByRole('button', { name: '櫃台' }).click();
+  await page.keyboard.press('F3');
+  const settingsTab = nav.getByRole('button', { name: '今日設定' });
+  await expect(settingsTab).toHaveAttribute('aria-current', 'page');
+  await expect(settingsTab).toBeFocused();
+  await expect(nav.getByRole('button', { name: '櫃台' })).not.toBeFocused();
+
+  // 環狀外框必須畫在按鈕內側：.tabs 的 overflow 會把按鈕外面的外框裁掉。
+  await page.keyboard.press('Shift+Tab');
+  const focused = nav.locator('.tab:focus');
+  await expect(focused).toHaveCount(1);
+  const ring = await focused.evaluate(node => {
+    const style = getComputedStyle(node);
+    const tab = node.getBoundingClientRect();
+    const tabs = node.parentElement!.getBoundingClientRect();
+    // 外框外緣 = 按鈕邊緣 + offset + 寬度（offset 為負時在按鈕內側）。
+    const reach = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+    return {
+      style: style.outlineStyle,
+      outerTop: tab.top - reach, outerBottom: tab.bottom + reach,
+      tabsTop: tabs.top, tabsBottom: tabs.bottom,
+    };
+  });
+  expect(ring.style).toBe('solid');
+  expect(ring.outerTop).toBeGreaterThanOrEqual(ring.tabsTop);
+  expect(ring.outerBottom).toBeLessThanOrEqual(ring.tabsBottom);
+});

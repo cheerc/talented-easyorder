@@ -211,6 +211,80 @@ describe('App mode gate', () => {
     expect(panel?.textContent).not.toContain('租約');
   });
 
+  describe('#704: the operator menu closes when the pointer goes down outside it', () => {
+    const menu = () => document.querySelector('.operator-menu') as HTMLDetailsElement;
+
+    it('closes on an outside pointerdown and leaves the focus where the user pressed', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      menu().open = true;
+      const outside = screen.getByLabelText('測試草稿');
+      outside.focus();
+
+      fireEvent.pointerDown(outside);
+
+      expect(menu().open).toBe(false);
+      expect(document.activeElement).toBe(outside);
+    });
+
+    it('stays open for a pointerdown inside the menu', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      menu().open = true;
+
+      fireEvent.pointerDown(menu().querySelector('summary') as HTMLElement);
+      fireEvent.pointerDown(menu().querySelector('select') as HTMLElement);
+
+      expect(menu().open).toBe(true);
+    });
+
+    it('stops listening once the menu is closed', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      menu().open = true;
+      fireEvent.pointerDown(document.body);
+      expect(menu().open).toBe(false);
+
+      menu().open = true;
+      // `toggle` is async in a real browser; the listener follows the open state through it.
+      fireEvent(menu(), new Event('toggle'));
+      fireEvent.pointerDown(document.body);
+      expect(menu().open).toBe(false);
+    });
+  });
+
+  describe('#705: F-key / Alt+digit navigation keeps the keyboard focus on the active tab', () => {
+    it('moves the focus from the tab the mouse left it on to the newly active tab', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      const tabs = screen.getByRole('navigation', { name: '主要導覽' });
+      const counter = screen.getByRole('button', { name: '櫃台' });
+      counter.focus();
+
+      fireEvent.keyDown(window, { key: 'F2' });
+
+      const report = screen.getByRole('button', { name: '今日帳' });
+      expect(report).toHaveAttribute('aria-current', 'page');
+      expect(document.activeElement).toBe(report);
+      expect(tabs.contains(document.activeElement)).toBe(true);
+
+      fireEvent.keyDown(window, { code: 'Digit4', key: '¢', altKey: true });
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '供應商' }));
+    });
+
+    it('does not pull the focus into the tabs when it is somewhere else', () => {
+      appMocks.cloudModeValid = true;
+      render(<App />);
+      const summary = document.querySelector('.operator-menu summary') as HTMLElement;
+      summary.focus();
+
+      fireEvent.keyDown(window, { key: 'F2' });
+
+      expect(screen.getByRole('button', { name: '今日帳' })).toHaveAttribute('aria-current', 'page');
+      expect(document.activeElement).toBe(summary);
+    });
+  });
+
   describe('#691 P9: the fixed eight hours end in the normal sign-out', () => {
     const operator = (signOut: () => void) => ({ name: '測試操作員', epoch: 4, signOut });
     const renderApp = (signOut: () => void) => render(<OperatorContext.Provider value={operator(signOut)}><App /></OperatorContext.Provider>);
