@@ -3,6 +3,7 @@ import { settings } from './helpers/navigation';
 
 import { test, expect } from './fixtures';
 import { PROJECT, readAccessLease } from './helpers/seed';
+import { withWeekday } from './helpers/businessDate';
 
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
 
@@ -198,7 +199,7 @@ test.describe('P07 Cloud day vendors', () => {
 
     const dateField = main.getByLabel('營業日', { exact: true });
     await dateField.fill(previousDate);
-    await expect(main.getByRole('heading', { name: `${previousDate} 營業日` })).toBeVisible();
+    await expect(main.getByRole('heading', { name: `${withWeekday(previousDate)} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     await expect(main.getByRole('form', { name: `${previousDate} 菜單` })).toBeVisible();
 
@@ -231,7 +232,7 @@ test.describe('P07 Cloud day vendors', () => {
     });
 
     await dateField.fill(today);
-    await expect(main.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+    await expect(main.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     const todayMenuForm = main.getByRole('form', { name: `${today} 菜單` });
     await expect(todayMenuForm).toBeVisible();
@@ -301,7 +302,7 @@ test.describe('P07 Cloud day vendors', () => {
     await settings(page, '菜單與開帳');
 
     await dateField.fill(futureDate);
-    await expect(main.getByRole('heading', { name: `${futureDate} 營業日` })).toBeVisible();
+    await expect(main.getByRole('heading', { name: `${withWeekday(futureDate)} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     const futureMenuForm = main.getByRole('form', { name: `${futureDate} 菜單` });
     await expect(futureMenuForm).toBeVisible();

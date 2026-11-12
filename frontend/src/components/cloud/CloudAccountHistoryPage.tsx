@@ -20,6 +20,7 @@ import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerTo
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudAccountHistoryPage.css';
 import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
+import { formatBusinessDate } from '../../utils/businessDate';
 
 export interface CloudAccountHistoryPageProps {
   db: Firestore;
@@ -859,7 +860,7 @@ export function CloudAccountHistoryPage({
               const day = rangeDayByDate.get(transaction.businessDate);
               const eligible = canMutate(transaction);
               return <tr key={transaction.transactionId}>
-                <td>{transaction.businessDate}<small>{formatTaipeiTime(transaction.createdAt)}</small></td>
+                <td>{formatBusinessDate(transaction.businessDate)}<small>{formatTaipeiTime(transaction.createdAt)}</small></td>
                 <td>{transaction.type} · {transaction.transactionId}<details><summary>交易與稽核詳情</summary>
                   <dl><dt>最後修改命令</dt><dd>{transaction.lastCommandId}</dd><dt>建立者</dt><dd>{transaction.operatorUid} · {transaction.operatorEmail}</dd>
                     <dt>當時菜單</dt><dd>{transaction.menuNameSnapshot} · {transaction.vendorNameSnapshot}</dd><dt>補登</dt><dd>{transaction.backfilled ? '是' : '否'}</dd>
@@ -895,7 +896,7 @@ export function CloudAccountHistoryPage({
 
         <section aria-labelledby="account-settlements-heading"><h3 id="account-settlements-heading">日結版本（全日現金，不代表此帳戶餘額）</h3>
           {snapshot.account.settlements.map(settlement => <article key={`${settlement.businessDate}:${settlement.revision}`}>
-            <strong>{settlement.businessDate} · 第 {settlement.revision} 版 · <StatusBadge variant={settlement.status === 'closed' ? 'ok' : 'warn'} className="cloud-account-history__status">{settlement.status === 'closed' ? '已關帳' : '已重開'}</StatusBadge></strong>
+            <strong>{formatBusinessDate(settlement.businessDate)} · 第 {settlement.revision} 版 · <StatusBadge variant={settlement.status === 'closed' ? 'ok' : 'warn'} className="cloud-account-history__status">{settlement.status === 'closed' ? '已關帳' : '已重開'}</StatusBadge></strong>
             <p>應有現金 {formatMoney(settlement.expectedCash)} · 實點 {settlement.countedCash === null ? '—' : formatMoney(settlement.countedCash)} · {settlement.actorEmail} · {formatTaipeiTime(settlement.committedAt)}</p>
             <p>{settlement.note || '無備註'}</p>
           </article>)}
@@ -905,7 +906,7 @@ export function CloudAccountHistoryPage({
             </div>
           )}
           {snapshot.account.postCloseEntries.map(entry => <article key={entry.entryId}>
-            <strong>{entry.businessDate} · 日結第 {entry.settlementRevision} 版後補記 · {entry.direction === 'income' ? '收入' : '支出'} {formatMoney(entry.amount)}</strong>
+            <strong>{formatBusinessDate(entry.businessDate)} · 日結第 {entry.settlementRevision} 版後補記 · {entry.direction === 'income' ? '收入' : '支出'} {formatMoney(entry.amount)}</strong>
             <p>{entry.reason} · {operatorDisplayLabel(entry.createdBy, operatorSelf)} · {formatTaipeiTime(entry.createdAt)} · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}</p>
           </article>)}
         </section>
@@ -915,7 +916,7 @@ export function CloudAccountHistoryPage({
             <HelpTip label="稽核日期歸屬說明">沒有營業日的操作依台北記錄日期列入。</HelpTip></Callout>
           <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>命令</th><th>有效日期與依據</th><th>操作人／時間</th><th>理由</th><th>更正前後</th></tr></thead><tbody>
             {snapshot.audit.rows.map(row => <tr key={row.commandId} data-seq={row.seq}><td>{row.kind}<small>{row.commandId}</small></td>
-              <td>{row.attributedDate} · {row.dateBasis === 'business-date' ? '營業日' : '記錄日（台北）'}<small>原營業日：{row.businessDate ?? '無'}</small></td>
+              <td>{formatBusinessDate(row.attributedDate)} · {row.dateBasis === 'business-date' ? '營業日' : '記錄日（台北）'}<small>原營業日：{row.businessDate ? formatBusinessDate(row.businessDate) : '無'}</small></td>
               <td>{row.actorEmail}<small>{formatTaipeiTime(row.committedAt)}</small></td><td>{row.reason ?? '—'}</td>
               <td><details><summary>查看</summary><pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></details></td></tr>)}
           </tbody></table></div>

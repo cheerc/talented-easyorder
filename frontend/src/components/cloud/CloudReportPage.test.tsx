@@ -784,6 +784,26 @@ describe('CloudReportPage', () => {
     });
   });
 
+  it('#707 shows the weekday on table date cells while the day-close button keeps the plain date', async () => {
+    mocks.readReport.mockImplementation(async input => ({ ...report, scope: { studentId: input.studentId } }));
+    mocks.readAuditRange.mockImplementation(async input => ({ ...audit, scope: { studentId: input.studentId } }));
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:weekday" />);
+    await screen.findByTestId('report-ready');
+    // 2026-10-19 is a Monday (literal oracle, not computed).
+    expect((await screen.findAllByRole('cell', { name: '2026-10-19（一）' })).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '開啟日結 2026-10-19' }).length).toBeGreaterThan(0);
+  });
+
+  it('#707 shows the weekday on the print-date option label while its value stays the plain date', async () => {
+    mocks.readReport.mockImplementation(async input => ({ ...report, scope: { studentId: input.studentId } }));
+    mocks.readAuditRange.mockImplementation(async input => ({ ...audit, scope: { studentId: input.studentId } }));
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:print-option" />);
+    await screen.findByTestId('report-ready');
+    // 2026-10-19 is a Monday (literal oracle, not computed).
+    const option = within(screen.getByLabelText('列印標示日期')).getByRole('option', { name: '2026-10-19（一）' });
+    expect(option).toHaveValue('2026-10-19');
+  });
+
   it('routes a date to day close and the selected account plus range to account history', async () => {
     const onOpenDayClose = vi.fn();
     const onOpenAccountHistory = vi.fn();

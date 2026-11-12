@@ -292,6 +292,16 @@ describe('CloudAccountHistoryPage', () => {
     });
   });
 
+  it('#707 shows the weekday on the transaction date cell and on the audit effective / original business date', async () => {
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    // 2026-10-18 is a Sunday (literal oracle, not computed).
+    const auditRow = document.querySelector('tr[data-seq="4"]')!;
+    expect(auditRow).toHaveTextContent('2026-10-18（日） · 營業日');
+    expect(auditRow).toHaveTextContent('原營業日：2026-10-18（日）');
+    expect(screen.getByRole('cell', { name: /^2026-10-18（日）\s*2026\/10\/18/ })).toBeInTheDocument();
+  });
+
   it('keeps closed historical transactions read-only and directs cash differences to day close', async () => {
     mocks.readAccountHistory.mockResolvedValueOnce({ ...account, days: [{ ...days[0], status: 'reopened', lastSettlementRevision: 2 }] });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);

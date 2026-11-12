@@ -20,6 +20,7 @@ import {
   shiftDay,
 } from './helpers/scenarios';
 import type { Page } from '@playwright/test';
+import { withWeekday } from './helpers/businessDate';
 
 const VACANT_LEASE = { holderUid: null, epoch: 0 };
 const today = taipeiToday();
@@ -115,7 +116,7 @@ test.describe('具名業務情境 fixtures', () => {
         await expect(date).toHaveValue(today);
         await date.fill(nextDay);
         await page.getByRole('dialog', { name: '捨棄草稿？' }).getByRole('button', { name: '捨棄並載入' }).click();
-        await expect(main.getByRole('heading', { name: `${nextDay} 營業日` })).toBeVisible();
+        await expect(main.getByRole('heading', { name: `${withWeekday(nextDay)} 營業日` })).toBeVisible();
       } finally {
         await scenario.cleanup();
       }
@@ -183,7 +184,7 @@ test.describe('具名業務情境 fixtures', () => {
       await mainNav(page, '今日帳').click();
       const main = page.getByRole('main', { name: '雲端日結' });
       await main.getByTestId(`cloud-no-business-${scenario.dayId}`).click();
-      await expect(main.getByRole('heading', { name: `${scenario.dayId} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(scenario.dayId)} 日結` })).toBeVisible();
       const card = main.getByRole('region', { name: '補開帳' });
       await expect(card).toBeVisible();
       await expect(card.getByRole('button', { name: '補開帳說明' })).toBeVisible();

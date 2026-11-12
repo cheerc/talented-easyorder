@@ -33,6 +33,7 @@ import { Toast } from '../ui/Toast';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudDayClosePage.css';
 import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
+import { formatBusinessDate } from '../../utils/businessDate';
 
 export interface CloudDayClosePageProps {
   db: Firestore;
@@ -1616,7 +1617,7 @@ export function CloudDayClosePage({
   // still take entries. It sits at the top of the close section, or in its own small card when the day cannot be closed yet.
   const backfillEntry = snapshot?.backfill && onOpenOrders && day?.status !== 'closed' ? (
     <button type="button" className="cloud-day-close__primary" onClick={() => onOpenOrders(snapshot.dayId)} disabled={busy} data-testid="backfill-align-orders">
-      到訂餐頁補登 {snapshot.dayId}
+      到訂餐頁補登 {formatBusinessDate(snapshot.dayId)}
     </button>
   ) : null;
   // The date row uses the same state words as the banner chips (#688).
@@ -1744,7 +1745,7 @@ export function CloudDayClosePage({
                       onClick={() => requestDay(item.dayId)}
                       disabled={busy}
                     >
-                      <span className="cloud-day-close__mono">{item.dayId}</span>
+                      <span className="cloud-day-close__mono">{formatBusinessDate(item.dayId)}</span>
                       <span className="cloud-day-close__chip-count">{item.activeTransactionCount} 筆交易</span>
                       {item.backfill ? (
                         <span data-testid={`cloud-unclosed-backfill-${item.dayId}`}>
@@ -1784,7 +1785,7 @@ export function CloudDayClosePage({
                     onClick={() => requestDay(item.dayId)}
                     disabled={busy}
                   >
-                    <span className="cloud-day-close__mono">{item.dayId}</span>
+                    <span className="cloud-day-close__mono">{formatBusinessDate(item.dayId)}</span>
                   </button>
                 ))}
               </span>
@@ -1794,7 +1795,7 @@ export function CloudDayClosePage({
           <section className="cloud-day-close__day-section" aria-label="指定營業日日結">
             <div className="cloud-day-close__section-heading">
               <div>
-                <h2>{snapshot.dayId} 日結</h2>
+                <h2>{formatBusinessDate(snapshot.dayId)} 日結</h2>
                 {day ? (
                   day.lastSettlementRevision > 0 ? <p>日結版本 {day.lastSettlementRevision}</p> : null
                 ) : <p>{canStartBackfill ? '伺服器沒有這個日期的營業日。如果那天其實有營業，可以在下方補登。' : '伺服器沒有這個日期的營業日，不需關帳。'}</p>}
@@ -1813,7 +1814,7 @@ export function CloudDayClosePage({
 
             {page.backfillPlan && page.backfillPlan.dayId === snapshot.dayId && !snapshot.backfill && (
               <section className="cloud-day-close__recovery" aria-label="補登進度" role="alert" data-testid="backfill-plan-panel">
-                <strong>開始補登 {snapshot.dayId} 還沒完成。</strong>
+                <strong>開始補登 {formatBusinessDate(snapshot.dayId)} 還沒完成。</strong>
                 <span>已經在伺服器上確認的步驟不會重做，下一步會依伺服器現況決定。</span>
                 <div className="cloud-day-close__actions">
                   <button type="button" className="cloud-day-close__primary" onClick={continueBackfill} disabled={busy} data-testid="backfill-continue">

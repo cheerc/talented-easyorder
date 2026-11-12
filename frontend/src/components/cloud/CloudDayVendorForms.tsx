@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import type { CloudLastWeekMenuItem } from '../../firebase/cloudDayVendorRepository';
+import { businessWeekday, formatBusinessDate } from '../../utils/businessDate';
 import { Callout } from '../ui/Callout';
 import { HelpTip } from '../ui/HelpTip';
 import { Modal } from '../ui/Modal';
@@ -137,12 +138,9 @@ type LastWeekState =
   | { status: 'ready'; items: CloudLastWeekMenuItem[] }
   | { status: 'error'; message: string };
 
-const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
-
 /** "11/03（二）" from a YYYY-MM-DD id; the weekday comes from the date string, not from the browser clock. */
 function lastWeekDayLabel(dayId: string): string {
-  const weekday = WEEKDAY_LABELS[new Date(`${dayId}T00:00:00.000Z`).getUTCDay()] ?? '';
-  return `${dayId.slice(5, 7)}/${dayId.slice(8, 10)}（${weekday}）`;
+  return `${dayId.slice(5, 7)}/${dayId.slice(8, 10)}（${businessWeekday(dayId)}）`;
 }
 
 export function CloudDayMenuForm({
@@ -211,7 +209,7 @@ export function CloudDayMenuForm({
     <>
       <form className="cloud-day-form" aria-label={`${businessDate} 菜單`} onSubmit={handleSubmit}>
         <div className="cloud-day-form__title-row">
-          <h3>{businessDate} 菜單</h3>
+          <h3>{formatBusinessDate(businessDate)} 菜單</h3>
           <HelpTip label="菜單說明">僅可選擇使用中的供應商。{'\n'}可用「複製上週菜單」帶入上週一～五的菜單，帶入後仍可修改。</HelpTip>
           {loadLastWeekMenus && (
             <button type="button" className="cloud-day-form__secondary" onClick={openCopy} disabled={disabled}>
@@ -337,7 +335,7 @@ export function CloudDayOpeningCashForm({
 
   return (
     <form className="cloud-day-form" aria-label={`${businessDate} 開帳現金`} onSubmit={handleSubmit}>
-      <h3>{businessDate} 開帳現金</h3>
+      <h3>{formatBusinessDate(businessDate)} 開帳現金</h3>
       {currentOpeningCash === null ? (
         <Callout variant="warn">尚未確認開帳。請輸入實際金額；輸入 0 才代表已確認為零元。</Callout>
       ) : (

@@ -31,13 +31,28 @@ describe('CloudLedgerAnomaliesPage', () => {
       { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'reopened', openingCash: null, activeTransactionCount: 3 },
     ]));
     const item = within(screen.getByRole('list', { name: '帳務異常清單' })).getByRole('listitem');
-    expect(item).toHaveTextContent('2026-10-15 尚未關帳');
+    expect(item).toHaveTextContent('2026-10-15（四） 尚未關帳');
     expect(within(item).getByText('重開後未關帳')).toHaveClass('badge-ui', 'badge-warn');
     expect(item).toHaveTextContent('重開後還沒有關帳');
     expect(item).toHaveTextContent('還沒有確認開帳現金');
     expect(item).toHaveTextContent('3 筆有效交易');
     fireEvent.click(within(item).getByRole('button', { name: '到日結頁處理 2026-10-15' }));
     expect(onOpenDayClose).toHaveBeenCalledWith('2026-10-15');
+  });
+
+  it('#707 shows the weekday on both anomaly headings but keeps buttons and sentences on the plain date', () => {
+    // 2026-10-15 is a Thursday, 2026-10-16 a Friday (literal oracle, not computed).
+    renderPage(ready([
+      { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: null, activeTransactionCount: 1 },
+      {
+        kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
+      },
+    ]));
+    expect(screen.getByRole('heading', { name: '2026-10-15（四） 尚未關帳' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2026-10-16（五） 開帳現金與上次關帳不符' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '到日結頁處理 2026-10-15' })).toBeInTheDocument();
+    expect(screen.getByText(/2026-10-13 的實點現金是 NT\$ 870/)).toBeInTheDocument();
   });
 
   it('shows the opening amount of an unclosed day that has one', () => {
@@ -54,7 +69,7 @@ describe('CloudLedgerAnomaliesPage', () => {
       };
     const { onOpenPostCloseEntry } = renderPage(ready([mismatch]));
     const item = screen.getByRole('listitem');
-    expect(item).toHaveTextContent('2026-10-16 開帳現金與上次關帳不符');
+    expect(item).toHaveTextContent('2026-10-16（五） 開帳現金與上次關帳不符');
     expect(within(item).getByText('差額異常')).toHaveClass('badge-ui', 'badge-warn');
     expect(item).toHaveTextContent('開帳現金是 NT$ 800');
     expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 870');

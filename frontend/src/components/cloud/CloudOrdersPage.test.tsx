@@ -6,6 +6,7 @@ import type { CloudDayRecord } from '../../firebase/cloudDayVendorRepository';
 import type { CloudOrderSnapshot, CloudOrderTransactionRecord } from '../../firebase/cloudOrderRepository';
 import type { CommandResult } from '../../domain/cloudCommands';
 import { CloudOrdersPage, type CloudOrdersPageProps } from './CloudOrdersPage';
+import { withWeekday } from '../../test/withWeekday';
 
 const repositoryMock = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
@@ -1845,15 +1846,39 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     expect((roots[0].textContent ?? '').split(TODAY)).toHaveLength(2);
   });
 
+  it('#707 shows the weekday on the static business date, the day-select options, the backfill banner and the empty-menu title', async () => {
+    // 2026-10-16 is a Friday, 2026-10-14 a Wednesday (literal oracle, not computed).
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
+    const first = renderComponent();
+    await screen.findByTestId('cloud-topbar-bento');
+    expect(screen.getByLabelText('營業日')).toHaveTextContent('2026-10-16（五）');
+    first.unmount();
+
+    repositoryMock.loadSnapshot.mockImplementation(async (options: { dayId?: string | null } = {}) => (
+      options.dayId ? backfillSnapshot({ transactions: [] }) : snapshot({ backfillDays: [marker] })
+    ));
+    const second = renderComponent();
+    const select = await screen.findByTestId('orders-day-select');
+    expect(within(select).getByRole('option', { name: '今天 2026-10-16（五）' })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: '補登中 2026-10-14（三）' })).toBeInTheDocument();
+    second.unmount();
+
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
+    renderComponent('uid-1:1', GAP);
+    const banner = await screen.findByTestId('backfill-banner');
+    expect(within(banner).getByText('正在補登 2026-10-14（三）')).toBeVisible();
+    expect(screen.getByText(/2026-10-14（三） 尚未設定菜單/)).toBeVisible();
+  });
+
   it('opens the day App asked for, shows a banner with the reason and tags only the rows entered later', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
     renderComponent('uid-1:1', GAP);
     const banner = await screen.findByTestId('backfill-banner');
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledWith({ dayId: GAP });
     // The title is only the day; the reason is a small line under it (#689).
-    expect(within(banner).getByText(`正在補登 ${GAP}`)).toBeVisible();
+    expect(within(banner).getByText(`正在補登 ${withWeekday(GAP)}`)).toBeVisible();
     expect(within(banner).getByText('原因：那天斷線')).toBeVisible();
-    expect(within(banner).getByText(`正在補登 ${GAP}`)).not.toHaveTextContent('原因');
+    expect(within(banner).getByText(`正在補登 ${withWeekday(GAP)}`)).not.toHaveTextContent('原因');
     const field = screen.getByLabelText('營業日');
     expect(field.tagName).toBe('SELECT');
     expect(field).toHaveValue(GAP);
@@ -1887,7 +1912,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
     renderComponent('uid-1:1', GAP);
     await selectStudent('002');
-    expect(screen.getByText(new RegExp(`${GAP} 尚未設定菜單`))).toBeVisible();
+    expect(screen.getByText(new RegExp(`${withWeekday(GAP)} 尚未設定菜單`))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
     fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '水餃' } });
     fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '70' } });

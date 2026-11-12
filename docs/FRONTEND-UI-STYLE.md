@@ -41,6 +41,7 @@
 - `ActionCard`：整張是一個 `<button>`，圖示、標題、說明、動作膠囊、`Kbd`；accessible name 是「標題，說明，動作」，不含 Kbd。唯一的 `layout` 屬性：`hero`（預設，依 F1 mockup 置中直排、虛線強調色外框，用在整頁被擋住時）、`inline`（橫排，膠囊緊接文字，用在資訊列內的小卡）。
 - `StatTile`：標籤＋大數字（等寬）；`warn` 只給需要處理的數字。
 - `DateField`：單日「營業日」控制項，F1／F2／F3 共用，標籤固定為「營業日」；外觀取 F2 日結日期列（等寬字、`--t-lg`、最小高度 3rem）。三種變體：`date`（原生日期，輸入中不載入、Enter 或離開欄位才確認，滑鼠選日期立刻確認）、`select`（選項由頁面提供，F1 用）、`static`（唯讀、同外觀）；右側 `status` slot 由頁面放狀態徽章與今天／過去日期／未來日期；`size="compact"` 給較小的標題列。新頁面要選單日營業日時用它，不要自己寫日期列。
+- 營業日顯示：畫面上當標題、表格日期欄、日期 chip、選項或橫幅開頭的營業日，一律用 `formatBusinessDate`（`utils/businessDate.ts`）顯示成 `YYYY-MM-DD（五）`（全形括號）；CSV、檔名、`aria-label`、命令標籤、句中日期與原生日期欄維持純 `YYYY-MM-DD`。
 
 ## 原生 select 基線（#706）
 
