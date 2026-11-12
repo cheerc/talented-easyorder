@@ -20,7 +20,6 @@ const appMocks = vi.hoisted(() => ({
 
 vi.mock('../appMode', async importOriginal => ({
   ...(await importOriginal<typeof import('../appMode')>()),
-  isPrototypeMode: false,
   validateAppModeConfig: () => appMocks.cloudModeValid
     ? ({ ok: true as const })
     : ({ ok: false as const, error: 'missing Firebase configuration' }),

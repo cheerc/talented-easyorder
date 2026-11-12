@@ -290,7 +290,7 @@ function InitializationProblemPage({ message }: { message: string }) {
 }
 
 function AppModeContent() {
-  const config = validateAppModeConfig(import.meta.env.MODE, import.meta.env);
+  const config = validateAppModeConfig(import.meta.env);
   if (!config.ok) {
     return (
       <main className="auth-gate" aria-label="Firebase 設定錯誤">
