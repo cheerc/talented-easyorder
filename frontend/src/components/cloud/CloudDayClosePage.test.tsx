@@ -577,6 +577,20 @@ describe('CloudDayClosePage', () => {
     expect(report).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
   });
 
+  it('#707 shows the weekday on the date heading and on the unclosed / no-business date chips', async () => {
+    repository.readOverview.mockResolvedValue(overview({
+      unclosedDays: [
+        { dayId: '2026-10-10', status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'no-business', backfill: null },
+        { dayId: '2026-10-12', status: 'open', openingCash: null, activeTransactionCount: 3, kind: 'missing-opening', backfill: null },
+      ],
+    }));
+    renderPage();
+    // 2026-10-17 is a Saturday, 2026-10-10 a Saturday, 2026-10-12 a Monday (literal oracle, not computed).
+    expect(await screen.findByRole('heading', { name: '2026-10-17（六） 日結' })).toBeInTheDocument();
+    expect(screen.getByTestId('cloud-no-business-2026-10-10')).toHaveTextContent('2026-10-10（六）');
+    expect(screen.getByTestId('cloud-unclosed-2026-10-12')).toHaveTextContent('2026-10-12（一）');
+  });
+
   it('lists unclosed days, marks past days without business, and opens a listed day', async () => {
     const past = '2026-10-15';
     repository.readOverview.mockResolvedValue(overview({
@@ -989,6 +1003,8 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: '重新載入伺服器資料' })[0]);
     expect(await screen.findByTestId('backfill-plan-panel', undefined, { timeout: 5_000 })).toBeInTheDocument();
+    // #707: the panel title leads with the business date, so it shows the weekday (2026-10-14 is a Wednesday).
+    expect(screen.getByTestId('backfill-plan-panel')).toHaveTextContent('開始補登 2026-10-14（三） 還沒完成');
     fireEvent.click(screen.getByTestId('backfill-continue'));
 
     expect(await screen.findByText(/已開始補登這一天/, undefined, { timeout: 5_000 })).toBeInTheDocument();
@@ -1093,6 +1109,16 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(within(state).getByText('補登中')).toHaveClass('badge-ui', 'badge-warn');
     expect(state).toHaveTextContent('過去日期');
     fireEvent.click(screen.getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    expect(onOpenOrders).toHaveBeenCalledWith(gap);
+  });
+
+  it('#707 shows the weekday on the way to the orders page of a backfilling day', async () => {
+    repository.readOverview.mockResolvedValue(gapOverview(marker, true));
+    repository.read.mockResolvedValue(gapDay(3, 870));
+    const onOpenOrders = vi.fn();
+    renderAt(gap, { onOpenOrders });
+    // 2026-10-14 is a Wednesday.
+    fireEvent.click(await screen.findByRole('button', { name: '到訂餐頁補登 2026-10-14（三）' }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
 

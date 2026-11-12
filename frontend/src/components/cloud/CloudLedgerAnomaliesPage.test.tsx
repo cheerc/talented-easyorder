@@ -40,6 +40,21 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(onOpenDayClose).toHaveBeenCalledWith('2026-10-15');
   });
 
+  it('#707 shows the weekday on both anomaly headings but keeps buttons and sentences on the plain date', () => {
+    // 2026-10-15 is a Thursday, 2026-10-16 a Friday (literal oracle, not computed).
+    renderPage(ready([
+      { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: null, activeTransactionCount: 1 },
+      {
+        kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
+      },
+    ]));
+    expect(screen.getByRole('heading', { name: '2026-10-15（四） 尚未關帳' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2026-10-16（五） 開帳現金與上次關帳不符' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '到日結頁處理 2026-10-15' })).toBeInTheDocument();
+    expect(screen.getByText(/2026-10-13 的實點現金是 NT\$ 870/)).toBeInTheDocument();
+  });
+
   it('shows the opening amount of an unclosed day that has one', () => {
     renderPage(ready([
       { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: 1200, activeTransactionCount: 0 },

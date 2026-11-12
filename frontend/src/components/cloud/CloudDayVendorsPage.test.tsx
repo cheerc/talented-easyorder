@@ -321,6 +321,25 @@ describe('CloudDayVendorsPage', () => {
     expect(repository.setDayMenu).not.toHaveBeenCalled();
   });
 
+  it('#707 shows the weekday on the page, menu and opening headings while the forms keep their plain-date names', async () => {
+    repository.loadSnapshot.mockResolvedValue(snapshot({
+      dayId: future,
+      selectionDate: today,
+      day: { ...snapshot().day!, dayId: future },
+    }));
+    const { unmount } = renderPage();
+    // 2026-10-20 is a Tuesday, 2026-10-15 a Thursday (literal oracle, not computed).
+    expect(await screen.findByRole('heading', { name: '2026-10-20（二） 營業日' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2026-10-20（二） 菜單' })).toBeInTheDocument();
+    expect(screen.getByRole('form', { name: `${future} 菜單` })).toBeInTheDocument();
+    unmount();
+
+    repository.loadSnapshot.mockResolvedValue(snapshot());
+    renderPage();
+    expect(await screen.findByRole('heading', { name: '2026-10-15（四） 開帳現金' })).toBeInTheDocument();
+    expect(screen.getByRole('form', { name: `${today} 開帳現金` })).toBeInTheDocument();
+  });
+
   it('requires explicit opening input and sends zero distinctly from unconfirmed null', async () => {
     repository.loadSnapshot
       .mockResolvedValueOnce(snapshot())
