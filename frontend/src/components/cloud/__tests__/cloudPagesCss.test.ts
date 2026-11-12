@@ -282,9 +282,6 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
     expect(ruleBody(topbar, '.brand-name')).toContain('font-size: 15px');
   });
 
-  it('CloudOrdersPage.css 的原生 select 繼承容器字級（切換營業日），與其他雲端頁一致', () => {
-    expect(readCss('CloudOrdersPage.css')).toMatch(/\.cloud-orders select\s*\{[^}]*font:\s*inherit/);
-  });
 
   it('F1 結帳明細的標籤不斷行、不被金額擠壓（#687：預計結餘）', () => {
     const rule = ruleBody(readCss('CloudOrdersPage.css'), '.cloud-orders__breakdown-row dt');
@@ -318,4 +315,79 @@ describe('#690 共用 DateField 外觀', () => {
     expect(readCss('CloudDayVendorsPage.css')).not.toContain('.cloud-day-vendors__date-form');
     expect(readCss('CloudDayVendorsPage.css')).not.toContain('.cloud-day-vendors__date-meta');
   });
+});
+
+// #706：雲端所有原生 select 共用一條基線（cloud-select.css）：appearance:none、自畫箭頭、右側預留箭頭空間。
+// 各頁與 DateField 只保留自己的尺寸，不再各自處理箭頭或字級繼承。
+describe('#706 雲端 select 共用基線', () => {
+  const SELECT_CSS = resolve(STYLES_DIR, 'cloud-select.css');
+  const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const selectCss = () => stripComments(readFileSync(SELECT_CSS, 'utf8'));
+  const rules = () => [...selectCss().matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
+    selector: match[1].trim().replace(/\s+/g, ' '),
+    body: match[2],
+  }));
+  const baseline = () => rules().find(rule => rule.selector === 'html[data-app-mode="cloud"] select');
+
+  it('index.css 在 cloud-scale.css 之後引入 cloud-select.css', () => {
+    const index = readFileSync(INDEX_CSS, 'utf8');
+    expect(index).toContain("@import './styles/cloud-select.css'");
+    expect(index.indexOf('cloud-select.css')).toBeGreaterThan(index.indexOf('cloud-scale.css'));
+  });
+
+  it('每個選擇器都限定在雲端模式（prototype 的 select 不受影響）', () => {
+    const selectors = rules().flatMap(rule => rule.selector.split(',').map(s => s.trim()));
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const selector of selectors) expect(selector).toContain('[data-app-mode="cloud"]');
+  });
+
+  it('基線 appearance:none，並用三主題都有的 --ink-2 自畫箭頭，右側預留空間', () => {
+    const body = baseline()?.body ?? '';
+    expect(body).toMatch(/appearance:\s*none/);
+    expect(body).toMatch(/background-image:[^;]*var\(--select-chevron\)/);
+    expect(body).toMatch(/--select-chevron:\s*var\(--ink-2\)/);
+    expect(body).toMatch(/background-repeat:\s*no-repeat/);
+    expect(body).toMatch(/padding-right:\s*calc\(/);
+  });
+
+  it('箭頭顏色不硬寫色碼，且 --ink-2 在三主題都定義', () => {
+    expect(hexCount(selectCss())).toBe(0);
+    const css = readFileSync(TOKENS, 'utf8');
+    for (const selector of [':root', '[data-theme="dark"]', '[data-theme="warm"]']) {
+      expect(declaredTokens(themeBlock(css, selector))).toContain('--ink-2');
+      expect(declaredTokens(themeBlock(css, selector))).toContain('--ink-3');
+    }
+  });
+
+  it('停用狀態的箭頭改用較淡的 --ink-3', () => {
+    const disabled = rules().find(rule => rule.selector === 'html[data-app-mode="cloud"] select:disabled');
+    expect(disabled?.body ?? '').toMatch(/--select-chevron:\s*var\(--ink-3\)/);
+  });
+
+  it('原生 select 繼承容器字級放進基線（低 specificity，不壓過各頁的尺寸）', () => {
+    const rule = rules().find(item => item.selector === ':where(html[data-app-mode="cloud"]) select');
+    expect(rule?.body ?? '').toMatch(/font:\s*inherit/);
+  });
+
+  it('DateField 的控制項不用 padding／background 簡寫壓掉基線的右內距與箭頭', () => {
+    const css = stripComments(readFileSync(resolve(UI_DIR, 'DateField.css'), 'utf8'));
+    const control = ruleBody(css, '.date-field-ui .date-field-ui__control');
+    expect(control).not.toMatch(/(^|[\s;{])padding:/);
+    expect(control).not.toMatch(/(^|[\s;{])background:/);
+    expect(control).toMatch(/background-color:\s*var\(--panel\)/);
+  });
+
+  it.each(['CloudOrdersPage.css', 'CloudReportPage.css', 'CloudAccountHistoryPage.css', 'CloudDayClosePage.css', 'CloudDayVendorsPage.css'])(
+    '%s 不再自己宣告 select 的 font: inherit（由基線統一）',
+    name => {
+      const css = stripComments(readCss(name));
+      for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+        const selectors = rule[1].split(',').map(s => s.trim());
+        const selectOnly = selectors.filter(s => /(^|[\s>+~])select$/.test(s));
+        if (selectOnly.length > 0 && /font:\s*inherit/.test(rule[2])) {
+          throw new Error(`${name}: ${selectOnly.join(', ')} 重複宣告 font: inherit`);
+        }
+      }
+    },
+  );
 });
