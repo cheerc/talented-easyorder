@@ -2,7 +2,7 @@ name: Repro 719 (throwaway, do not merge)
 
 on:
   push:
-    branches: ['claude/issue-719-repro']
+    branches: ['claude/issue-719-verify']
 
 jobs:
   p13b2:
@@ -11,8 +11,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ref: ['0d47175d4a8513ffdb6eaf3869aa00a7598d397a']
-        mode: ['block-a', 'block-b', 'block-c', 'block-d', 'allow-a', 'allow-b']
+        ref: ['489f3453b8458238dc358e069d0a447cfaed9200']
+        mode: ['fix-a', 'fix-b', 'fix-c', 'fix-d', 'fix-e']
     defaults:
       run:
         working-directory: frontend
@@ -54,7 +54,6 @@ jobs:
       - name: Run p13b2 (targeted repeat)
         if: true
         run: |
-          if [[ '${{ matrix.mode }}' == block-* ]]; then sed -i "s/serviceWorkers: 'allow'/serviceWorkers: 'block'/" playwright.p13b2.config.ts; fi
           grep -n serviceWorkers playwright.p13b2.config.ts
           cp ../probe-src/.github/repro-719/probe.mjs /tmp/probe.mjs && npx firebase emulators:exec --project demo-easyorder --only auth,firestore "(node /tmp/probe.mjs &) ; npx playwright test --config playwright.p13b2.config.ts --trace on --reporter=list --repeat-each=4 -g 'does not start the next backfill step|confirms a held RecordExport|confirms a held RecordPrint'"
       - if: always()
