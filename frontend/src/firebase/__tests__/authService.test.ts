@@ -239,6 +239,27 @@ describe('subscribeOperatorAccess — token refresh is not a new sign-in (#691 P
     expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'inactive' }));
   });
 
+  it('after an operator listener error the tab is denied, and the next same-account token refresh re-subscribes and can recover (#701)', async () => {
+    const onAccess = vi.fn();
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    await callback(verified('u1'));
+    const firstSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+    const firstError = mocks.mockOnSnapshot.mock.calls[0][2] as (err: Error) => void;
+    firstSnapshot({ data: () => ({ uid: 'u1', email: 'u1@gmail.com', active: true }) });
+    expect(reasons(onAccess)).toEqual(['checking', 'ok']);
+
+    firstError(new Error('listener closed'));
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'not_whitelisted' }));
+
+    await callback(verified('u1'));
+    expect(mocks.mockOnSnapshot).toHaveBeenCalledTimes(2);
+    expect(reasons(onAccess).slice(3)).toEqual(['checking']);
+    const secondSnapshot = mocks.mockOnSnapshot.mock.calls[1][1] as (snapshot: { data: () => unknown }) => void;
+    secondSnapshot({ data: () => ({ uid: 'u1', email: 'u1@gmail.com', active: true }) });
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: true }));
+  });
+
   it('a different account and the first sign-in still start with “checking”; signing out is unchanged', async () => {
     const onAccess = vi.fn();
     subscribeOperatorAccess(auth, db, onAccess);
