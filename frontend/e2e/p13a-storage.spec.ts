@@ -339,7 +339,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await enterSystem(pageA, { reload: true });
       await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageA.getByRole('button', { name: '櫃台' }).click();
+      await pageA.getByRole('button', { name: '櫃台', exact: true }).click();
       await expect(pageA.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(pageA.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await expect(pageA.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');
@@ -352,7 +352,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await pageA.reload();
       await expect(pageA.locator('.operator-strip')).toBeVisible();
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageA.getByRole('button', { name: '櫃台' }).click();
+      await pageA.getByRole('button', { name: '櫃台', exact: true }).click();
       await expect(pageA.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');
 
       await contextA.setOffline(true);
@@ -377,7 +377,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await enterSystem(pageB, { reload: true });
       await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '3');
       await expect(pageB.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageB.getByRole('button', { name: '櫃台' }).click();
+      await pageB.getByRole('button', { name: '櫃台', exact: true }).click();
       await expect(pageB.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');
       const nextHolderInventory = await readStorageInventory(pageB);
       expect(nextHolderInventory.firestoreDatabaseNames).toEqual([]);

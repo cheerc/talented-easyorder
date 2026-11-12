@@ -31,7 +31,7 @@ test('101 keyboard payment produces one confirmed effect and returns to search',
     lastSettlementRevision: 0, lastCommandId: seedId, updatedAt: new Date(),
   });
   await enterSystem(page, { reload: true });
-  await page.getByRole('button', { name: '櫃台' }).click();
+  await page.getByRole('button', { name: '櫃台', exact: true }).click();
   await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
   await page.locator('body').click({ position: { x: 2, y: 500 } });
   await page.keyboard.type('101');
@@ -75,7 +75,7 @@ test('multiple candidates move only through visible options and reset on a new q
     await upsertDocument('studentCodes', code, { studentId, lastCommandId: seedId, updatedAt: new Date() });
   }
   await enterSystem(page, { reload: true });
-  await page.getByRole('button', { name: '櫃台' }).click();
+  await page.getByRole('button', { name: '櫃台', exact: true }).click();
   const search = page.getByRole('combobox', { name: '搜尋編號、姓名或別名' });
   await search.fill('相似測試');
   const options = page.getByRole('listbox').getByRole('option');

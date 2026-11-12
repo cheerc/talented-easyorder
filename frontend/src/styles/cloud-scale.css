@@ -21,12 +21,11 @@ html[data-app-mode="cloud"] .mono {
 /* #667 雲端外殼字級：topbar.css 與 prototype 共用、用硬寫 px，保留給 prototype 不動；
    雲端在這裡改用 token／em，1920 依 1440 等比放大（約 4/3）。選擇器加 html[data-app-mode="cloud"] 前綴，
    specificity 高於 topbar.css 原規則，prototype 不受影響（cloudPagesCss.test.ts 守門）。
-   1440 下對照原值：brand-name 15→15、brand-sub 11→13、brand-mark 12→13、tab 14→15、operator 面板說明 p 12→13、按鈕與 select 14→15。 */
+   1440 下對照原值：brand-name 15→15、brand-mark 12→13、tab 14→15、operator 面板說明 p 12→13、按鈕與 select 14→15。 */
 html[data-app-mode="cloud"] .brand-name {
   font-size: var(--t-sm);
 }
 
-html[data-app-mode="cloud"] .brand-sub,
 html[data-app-mode="cloud"] .brand-mark {
   font-size: var(--t-xs);
 }

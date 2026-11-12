@@ -280,7 +280,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await expect(page.getByText('前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。')).toBeVisible();
     await page.getByText('技術資訊').click();
     await expect(page.getByText(commandId)).toBeVisible();
-    await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '櫃台', exact: true })).toBeVisible();
 
     const stored = await page.evaluate(({ namespace, pendingCommandId }) => {
       const prefix = `${namespace}:`;
@@ -299,7 +299,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     expect(Object.keys(JSON.parse(stored.raw!))).toEqual(['commandId', 'datasetId', 'uid']);
 
     await page.getByRole('button', { name: '暫時略過' }).click();
-    await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '櫃台', exact: true })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     expect(await page.evaluate(key => localStorage.getItem(key), `${APP_NAMESPACE}:${commandId}`)).toBe(stored.raw);
 
@@ -380,7 +380,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await enterSystem(page, { reload: true });
       await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
-      await page.getByRole('button', { name: '櫃台' }).click();
+      await page.getByRole('button', { name: '櫃台', exact: true }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
@@ -934,7 +934,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await enterSystem(page, { reload: true });
       await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
-      await page.getByRole('button', { name: '櫃台' }).click();
+      await page.getByRole('button', { name: '櫃台', exact: true }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await page.getByLabel('搜尋編號、姓名或別名').fill(studentCode);
       await page.getByTestId(`search-result-${studentCode}`).click();

@@ -389,6 +389,12 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  beforeEach(() => {
+    appMocks.recoveryGate = false;
+    vi.clearAllMocks();
+    appMocks.isCounterStart.mockReturnValue(false);
+  });
+
   it('ignores IME composition and repeated navigation keys at the cloud shell', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
