@@ -15,7 +15,7 @@
 ## 文件與 context
 
 - [後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md) 是後端契約來源；[後端計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md) 是 phase／驗收來源；[ops evidence](docs/ops/free-production-evidence.md) 記錄驗證證據。當前接手與授權看 handoff，不在本檔複製進度、數字、schema 或公式。
-- 前端接手入口為 [frontend handoff](docs/FRONTEND-PROTOTYPE-HANDOFF.md)；改 `frontend/` 時再讀 [frontend 局部指引](frontend/CLAUDE.md)。修改 root Rules、scripts 或 CI 時，也要依變更範圍閱讀前端雲端指引及對應 spec，nested 指引不會自動涵蓋 root 檔案。
+- 前端接手入口為 [frontend 局部指引](frontend/CLAUDE.md)與 [前端 UI 規範](docs/FRONTEND-UI-STYLE.md)；改 `frontend/` 時再讀。修改 root Rules、scripts 或 CI 時，也要依變更範圍閱讀前端雲端指引及對應 spec，nested 指引不會自動涵蓋 root 檔案。
 - 各層 `CLAUDE.md` 指引會串接補充，不是子檔覆蓋父檔；讀／改某區域檔案時載入該區域指引。用 `/context` 的 Memory files 檢查啟動時載入項；nested 指引可按需載入，未必會列在啟動清單。
 - 先由變更區域選讀對應 spec、plan、ops 或驗收文件，不整包載入。Markdown 普通連結是導讀，不會自動 import 目標內容；避免複製同一規則到多份文件。
 - 文件變更依 repo docs-check 做 arch／adr／area 判斷。文件命令與路徑須核對現況；docs-only 的 diff/link/path 檢查不等同 app 測試。標明 skipped、pending、failed 與未執行，不把 skipped 當通過。
