@@ -390,4 +390,43 @@ describe('#706 雲端 select 共用基線', () => {
       }
     },
   );
+
+  // r2：移除 select 的 font: inherit 時，不能讓 button／input 的選擇器串併入下一條規則（#711 Reviewer r1）。
+  const PAGE_SCOPES = [
+    { file: 'CloudReportPage.css', scope: '.cloud-report' },
+    { file: 'CloudAccountHistoryPage.css', scope: '.cloud-account-history' },
+    { file: 'CloudDayClosePage.css', scope: '.cloud-day-close' },
+    { file: 'CloudDayVendorsPage.css', scope: '.cloud-day-vendors' },
+  ];
+  const pageRules = (name: string) =>
+    [...stripComments(readCss(name)).matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
+      selectors: match[1].split(',').map((selector: string) => selector.trim().replace(/\s+/g, ' ')),
+      body: match[2],
+    }));
+
+  it.each(PAGE_SCOPES)('$file 的 $scope button／input 仍繼承字型（font: inherit 規則完整）', ({ file, scope }) => {
+    const rules = pageRules(file);
+    for (const element of ['button', 'input']) {
+      const rule = rules.find(item => item.selectors.includes(`${scope} ${element}`) && /font:\s*inherit/.test(item.body));
+      expect(rule, `${file}: 缺少 ${scope} ${element} 的 font: inherit`).toBeDefined();
+    }
+  });
+
+  it.each(PAGE_SCOPES)('$file 的按鈕外框規則不含 input／select 選擇器（不誤套按鈕外觀與 cursor: pointer）', ({ file, scope }) => {
+    for (const rule of pageRules(file)) {
+      if (!/cursor:\s*pointer/.test(rule.body)) continue;
+      const stray = rule.selectors.filter((selector: string) => selector === `${scope} input` || selector === `${scope} select`);
+      expect(stray, `${file}: ${rule.selectors.join(', ')}`).toEqual([]);
+    }
+  });
+
+  it('cloud-select.css 在強制色彩（高對比）模式退回原生箭頭', () => {
+    const css = selectCss();
+    expect(css).toMatch(/@media\s*\(forced-colors:\s*active\)\s*\{[^@]*html\[data-app-mode="cloud"\]\s+select\s*\{[^}]*appearance:\s*auto/);
+  });
+
+  it('DateField.css 不再留下「頁面 CSS 有 select font: inherit」的過時註解', () => {
+    expect(readFileSync(resolve(UI_DIR, 'DateField.css'), 'utf8')).not.toMatch(/頁面 CSS 有 `font: inherit`/);
+  });
 });
+
