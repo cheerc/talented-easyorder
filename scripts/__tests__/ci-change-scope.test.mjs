@@ -16,6 +16,8 @@ const docsCases = [
   ['docs/x.pdf'],
   ['docs/ops/baselines/a.txt'],
   ['docs/img/a.PNG', 'docs/img/b.svg', 'docs/img/c.jpeg', 'docs/img/d.gif', 'docs/img/e.jpg'],
+  ['.graphifyignore'],
+  ['frontend/.graphifyignore', 'docs/a.md'],
 ];
 const nonDocsCases = [
   ['docs/ops/p16-capacity-costs.json'],
@@ -30,6 +32,10 @@ const nonDocsCases = [
   ['frontend/X.MD'], // *.md is case-sensitive, as in the previous grep rule
   ['docs/a.md '], // trailing space: path is not trimmed
   ['docs/a.md\r'], // CRLF residue must not pass as Markdown
+  ['.graphifyignore', 'frontend/src/a.ts'], // mixed with code runs full CI
+  ['.graphifyignore.bak'],
+  ['x.graphifyignore'],
+  ['.gitignore'],
 ];
 
 test('docs-only whitelist accepts Markdown anywhere and documentation assets under docs/', () => {
