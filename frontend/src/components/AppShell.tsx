@@ -7,7 +7,11 @@ export function AppShell({ brand, active, select, status, disabled = false }: {
 }) {
   const tabsRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    tabsRef.current?.querySelector<HTMLElement>('.tab-on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const tabs = tabsRef.current;
+    const current = tabs?.querySelector<HTMLElement>('.tab-on');
+    // F 鍵／Alt+數字切頁後，若焦點還在分頁列裡（例如滑鼠點過舊分頁），讓焦點跟著目前頁，不留在舊分頁也不掉到 body（#705）。
+    if (current && tabs?.contains(document.activeElement) && document.activeElement !== current) current.focus({ preventScroll: true });
+    current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [active]);
   return <header className="topbar app-shell">
     {brand}

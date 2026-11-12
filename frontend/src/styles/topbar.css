@@ -80,6 +80,17 @@
   color: var(--bg);
 }
 
+.tab:focus-visible {
+  /* 外框畫在按鈕內側：.tabs 的 overflow 會裁掉畫在按鈕外面的外框（#705）。 */
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.tab-on:focus-visible {
+  /* 目前頁是深色底：外框內側再留一圈底色，橘框與深色之間才有對比。 */
+  box-shadow: inset 0 0 0 4px var(--bg);
+}
+
 .tab-key {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
