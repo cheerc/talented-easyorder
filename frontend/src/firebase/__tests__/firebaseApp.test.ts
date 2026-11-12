@@ -35,7 +35,7 @@ describe('readFirebaseConfig', () => {
     });
   });
 
-  it('treats Firebase as not configured in prototype mode even with full env (M0 S-ENV)', () => {
+  it('MODE=prototype 不再特別處理：有完整 env 就視為已設定（#709 P2）', () => {
     const fullEnv = {
       VITE_FIREBASE_API_KEY: 'api-key',
       VITE_FIREBASE_AUTH_DOMAIN: 'easyorder.firebaseapp.com',
@@ -45,10 +45,12 @@ describe('readFirebaseConfig', () => {
       VITE_FIREBASE_STORAGE_BUCKET: 'talented-easyorder-prod.appspot.com',
     };
     expect(isFirebaseConfigured({ ...fullEnv, MODE: 'development' })).toBe(true);
-    expect(isFirebaseConfigured({ ...fullEnv, MODE: 'prototype' })).toBe(false);
-    expect(getFirebaseConfigState({ ...fullEnv, MODE: 'prototype' })).toEqual({
+    expect(isFirebaseConfigured({ ...fullEnv, MODE: 'prototype' })).toBe(true);
+    expect(getFirebaseConfigState({ ...fullEnv, MODE: 'prototype' })).toMatchObject({ configured: true });
+    // 缺設定時仍 fail closed，與 mode 無關。
+    expect(getFirebaseConfigState({ MODE: 'prototype' })).toEqual({
       configured: false,
-      error: '本機練習模式不連線 Firebase',
+      error: 'Missing Firebase env var: VITE_FIREBASE_API_KEY',
     });
   });
 
