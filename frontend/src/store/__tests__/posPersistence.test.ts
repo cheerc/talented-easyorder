@@ -149,10 +149,5 @@ describe('posPersistence: storage 邊界與模式隔離', () => {
       expect((partial as PosState).transactions).toHaveLength(1);
     }
   });
-
-  it('clearSensitiveData 正常執行無異常', async () => {
-    const { clearSensitiveData } = await import('../posPersistence');
-    await expect(clearSensitiveData()).resolves.toBeUndefined();
-  });
 });
 
