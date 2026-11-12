@@ -299,7 +299,7 @@ describe('CloudAccountHistoryPage', () => {
     const auditRow = document.querySelector('tr[data-seq="4"]')!;
     expect(auditRow).toHaveTextContent('2026-10-18（日） · 營業日');
     expect(auditRow).toHaveTextContent('原營業日：2026-10-18（日）');
-    expect(screen.getByRole('cell', { name: /^2026-10-18（日）/ })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: /^2026-10-18（日）\s*2026\/10\/18/ })).toBeInTheDocument();
   });
 
   it('keeps closed historical transactions read-only and directs cash differences to day close', async () => {

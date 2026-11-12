@@ -34,6 +34,7 @@ import { DataUpdatedNotice } from './DataUpdatedNotice';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
 import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
+import { formatBusinessDate } from '../../utils/businessDate';
 
 type PreviousClosedLookupView =
   | { status: 'idle' }
@@ -1319,7 +1320,7 @@ export function CloudDayVendorsPage({
           <section className="cloud-day-vendors__day-section" aria-label="指定營業日">
             <div className="cloud-day-vendors__section-heading">
               <div>
-                <h2>{snapshot.dayId} 營業日</h2>
+                <h2>{formatBusinessDate(snapshot.dayId)} 營業日</h2>
                 {!snapshot.day && <p>伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。</p>}
               </div>
               {!snapshot.day && (

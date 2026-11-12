@@ -31,7 +31,7 @@ describe('CloudLedgerAnomaliesPage', () => {
       { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'reopened', openingCash: null, activeTransactionCount: 3 },
     ]));
     const item = within(screen.getByRole('list', { name: '帳務異常清單' })).getByRole('listitem');
-    expect(item).toHaveTextContent('2026-10-15 尚未關帳');
+    expect(item).toHaveTextContent('2026-10-15（四） 尚未關帳');
     expect(within(item).getByText('重開後未關帳')).toHaveClass('badge-ui', 'badge-warn');
     expect(item).toHaveTextContent('重開後還沒有關帳');
     expect(item).toHaveTextContent('還沒有確認開帳現金');
@@ -69,7 +69,7 @@ describe('CloudLedgerAnomaliesPage', () => {
       };
     const { onOpenPostCloseEntry } = renderPage(ready([mismatch]));
     const item = screen.getByRole('listitem');
-    expect(item).toHaveTextContent('2026-10-16 開帳現金與上次關帳不符');
+    expect(item).toHaveTextContent('2026-10-16（五） 開帳現金與上次關帳不符');
     expect(within(item).getByText('差額異常')).toHaveClass('badge-ui', 'badge-warn');
     expect(item).toHaveTextContent('開帳現金是 NT$ 800');
     expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 870');

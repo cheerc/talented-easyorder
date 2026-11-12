@@ -9,6 +9,7 @@ import type {
 } from '../../firebase/cloudDayVendorRepository';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { CloudDayVendorsPage } from './CloudDayVendorsPage';
+import { withWeekday } from '../../test/withWeekday';
 
 const repository = vi.hoisted(() => {
   const value = {
@@ -161,7 +162,7 @@ describe('CloudDayVendorsPage', () => {
     }));
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: `${future} 營業日` })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: `${withWeekday(future)} 營業日` })).toBeInTheDocument();
     expect(repository.loadSnapshot).toHaveBeenCalledWith(undefined);
     expect(screen.getByLabelText('營業日')).toHaveValue(future);
     expect(screen.queryByRole('form', { name: `${future} 開帳現金` })).not.toBeInTheDocument();
@@ -205,7 +206,7 @@ describe('CloudDayVendorsPage', () => {
       leaseEpoch: 4,
       dayId: future,
     }));
-    expect(await screen.findByRole('heading', { name: `${future} 菜單` })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: `${withWeekday(future)} 菜單` })).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: `${future} 開帳現金` })).not.toBeInTheDocument();
   });
 
@@ -220,7 +221,7 @@ describe('CloudDayVendorsPage', () => {
     repository.loadSnapshot.mockResolvedValueOnce(current).mockResolvedValueOnce(current);
     renderPage();
 
-    await screen.findByRole('heading', { name: `${future} 菜單` });
+    await screen.findByRole('heading', { name: `${withWeekday(future)} 菜單` });
     const vendorSelect = screen.getByRole('combobox', { name: '供應商' });
     expect(within(vendorSelect).getByRole('option', { name: '直接供應商' })).toBeInTheDocument();
     expect(within(vendorSelect).queryByRole('option', { name: '名稱 inactive-vendor' })).not.toBeInTheDocument();
@@ -263,7 +264,7 @@ describe('CloudDayVendorsPage', () => {
     ]);
     renderPage();
 
-    await screen.findByRole('heading', { name: `${future} 菜單` });
+    await screen.findByRole('heading', { name: `${withWeekday(future)} 菜單` });
     expect(screen.queryByRole('button', { name: '帶入最新較早菜單' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '改為直接設定' })).not.toBeInTheDocument();
     expect(repository.readLastWeekMenus).not.toHaveBeenCalled();
@@ -311,7 +312,7 @@ describe('CloudDayVendorsPage', () => {
     repository.readLastWeekMenus.mockResolvedValue([]);
     renderPage();
 
-    await screen.findByRole('heading', { name: `${today} 菜單` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 菜單` });
     expect(screen.getByRole('textbox', { name: '菜單名稱' })).toHaveValue('既有菜單');
     fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
     expect(await screen.findByText('上週沒有菜單')).toBeInTheDocument();
@@ -551,7 +552,7 @@ describe('CloudDayVendorsPage', () => {
     repository.saveVendor.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
     repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'OFFLINE', message: 'reader unavailable' });
     renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const form = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(form).getByLabelText('供應商編號'), { target: { value: 'vendor-reader-error' } });
@@ -581,7 +582,7 @@ describe('CloudDayVendorsPage', () => {
     const reportNavigationState = vi.fn();
     renderPage({}, reportNavigationState);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const form = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(form).getByLabelText('供應商編號'), { target: { value: 'vendor-confirmed' } });
@@ -736,7 +737,7 @@ describe('CloudDayVendorsPage', () => {
     let resolveSave!: (result: CommandResult) => void;
     repository.saveVendor.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveSave = resolve; }));
     renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const createForm = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'vendor-pii-id' } });
@@ -762,7 +763,7 @@ describe('CloudDayVendorsPage', () => {
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot({ vendors: [vendor('vendor-new-identity', { name: '新身分供應商' })] }));
     const view = renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const createForm = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'old-private-id' } });
@@ -791,7 +792,7 @@ describe('CloudDayVendorsPage', () => {
       .mockResolvedValueOnce(snapshot())
       .mockReturnValueOnce(new Promise<CloudDayVendorSnapshot>((_resolve, reject) => { rejectReload = reject; }));
     renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const createForm = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'pending-private-id' } });
@@ -853,7 +854,7 @@ describe('CloudDayVendorsPage', () => {
       error: { code: 'LEASE_LOST', message: 'lease changed' },
     });
     const view = renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const createForm = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'latch-private-id' } });
@@ -886,7 +887,7 @@ describe('CloudDayVendorsPage', () => {
       .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
     repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'INVALID_INPUT', message: 'existing command input differs' });
     renderPage();
-    await screen.findByRole('heading', { name: `${future} 菜單` });
+    await screen.findByRole('heading', { name: `${withWeekday(future)} 菜單` });
     fireEvent.change(screen.getByLabelText('菜單名稱'), { target: { value: '午夜前已凍結菜單' } });
     fireEvent.change(screen.getByLabelText('價格（新臺幣整數）'), { target: { value: '120' } });
     fireEvent.change(screen.getByRole('combobox', { name: '供應商' }), { target: { value: activeVendor.vendorId } });
@@ -912,19 +913,19 @@ describe('CloudDayVendorsPage', () => {
 
     it('loads the server snapshot as soon as a complete valid date is chosen, without a load button', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       expect(screen.queryByRole('button', { name: '載入日期' })).not.toBeInTheDocument();
       repository.loadSnapshot.mockResolvedValueOnce(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
 
       fireEvent.change(dateField(), { target: { value: nextDay } });
 
-      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(nextDay)} 營業日` });
       expect(repository.loadSnapshot).toHaveBeenLastCalledWith(nextDay);
     });
 
     it('does not read for an empty date or one before the go-live date, and keeps the original error', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       repository.loadSnapshot.mockClear();
 
       fireEvent.change(dateField(), { target: { value: '' } });
@@ -937,7 +938,7 @@ describe('CloudDayVendorsPage', () => {
 
     it('waits for Enter or blur while the date is being typed by keyboard', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       repository.loadSnapshot.mockClear();
       repository.loadSnapshot.mockResolvedValue(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
 
@@ -946,14 +947,14 @@ describe('CloudDayVendorsPage', () => {
       expect(repository.loadSnapshot).not.toHaveBeenCalled();
 
       fireEvent.keyDown(dateField(), { key: 'Enter' });
-      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(nextDay)} 營業日` });
       expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
       expect(repository.loadSnapshot).toHaveBeenCalledWith(nextDay);
     });
 
     it('loads typed dates on blur', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       repository.loadSnapshot.mockClear();
       repository.loadSnapshot.mockResolvedValue(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
 
@@ -962,13 +963,13 @@ describe('CloudDayVendorsPage', () => {
       expect(repository.loadSnapshot).not.toHaveBeenCalled();
       fireEvent.blur(dateField());
 
-      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(nextDay)} 營業日` });
       expect(repository.loadSnapshot).toHaveBeenCalledWith(nextDay);
     });
 
     it('asks before discarding an unsent draft: cancel keeps the draft and date, confirm loads', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       repository.loadSnapshot.mockClear();
       fireEvent.change(screen.getByLabelText('菜單名稱'), { target: { value: '未送出的菜單' } });
 
@@ -986,7 +987,7 @@ describe('CloudDayVendorsPage', () => {
       repository.loadSnapshot.mockResolvedValueOnce(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
       fireEvent.change(dateField(), { target: { value: nextDay } });
       fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '捨棄並載入' }));
-      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(nextDay)} 營業日` });
       expect(repository.loadSnapshot).toHaveBeenCalledWith(nextDay);
     });
 
@@ -997,12 +998,12 @@ describe('CloudDayVendorsPage', () => {
         .mockResolvedValueOnce(snapshot({ dayId: today }));
       const view = renderPage();
       view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={5} identityKey="uid-a:5" />);
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
 
       await act(async () => { resolveOld(snapshot({ dayId: future, day: { ...snapshot().day!, dayId: future } })); });
 
-      expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: `${future} 營業日` })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: `${withWeekday(future)} 營業日` })).not.toBeInTheDocument();
     });
   });
 
@@ -1012,7 +1013,7 @@ describe('CloudDayVendorsPage', () => {
         vendors: [vendor('inactive-vendor', { status: 'inactive' })],
       }));
       const { container } = renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
 
       expect(container.querySelector('details')).toBeNull();
       expect(screen.queryByText(/使用權日期來自伺服器租約時間/)).not.toBeInTheDocument();
@@ -1040,7 +1041,7 @@ describe('CloudDayVendorsPage', () => {
 
     it('no longer shows the server-lease date, go-live date or the midnight callout beside the date (#690, #691)', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       expect(screen.queryByText(/若跨過臺北午夜/)).not.toBeInTheDocument();
       expect(screen.queryByText(/系統啟用日/)).not.toBeInTheDocument();
       expect(screen.queryByText(/伺服器使用權日期/)).not.toBeInTheDocument();
@@ -1048,7 +1049,7 @@ describe('CloudDayVendorsPage', () => {
 
     it('uses the shared DateField labelled 營業日 with the day state and today/past/future in its status slot', async () => {
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       const field = screen.getByLabelText('營業日');
       expect(field.closest('.date-field-ui')).not.toBeNull();
       expect(screen.queryByLabelText('查看或設定日期')).not.toBeInTheDocument();
@@ -1060,7 +1061,7 @@ describe('CloudDayVendorsPage', () => {
     it('shows 尚未建立 in the status slot while the server has no document for the day', async () => {
       repository.loadSnapshot.mockResolvedValue(snapshot({ day: null }));
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       const status = screen.getByLabelText('營業日').closest('.date-field-ui')!.querySelector('.date-field-ui__status') as HTMLElement;
       expect(within(status).getByText('尚未建立')).toHaveClass('badge-ui', 'badge-neutral');
     });
@@ -1070,14 +1071,14 @@ describe('CloudDayVendorsPage', () => {
         dayId: future, selectionDate: today, day: { ...snapshot().day!, dayId: future },
       }));
       renderPage();
-      await screen.findByRole('heading', { name: `${future} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(future)} 營業日` });
       expect(screen.getByLabelText('營業日').closest('.date-field-ui')!.querySelector('.date-field-ui__status')).toHaveTextContent('未來日期');
     });
 
     it('shows blocked-action reasons as Callout', async () => {
       repository.loadSnapshot.mockResolvedValue(snapshot({ day: { ...snapshot().day!, status: 'closed' } }));
       renderPage();
-      await screen.findByRole('heading', { name: `${today} 營業日` });
+      await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
       const closed = screen.getAllByText(/此日期已關帳，不能修改/);
       expect(closed.length).toBeGreaterThanOrEqual(2);
       for (const node of closed) expect(node.closest('.callout-ui.callout-warn')).not.toBeNull();
@@ -1382,7 +1383,7 @@ describe('CloudDayVendorsPage: #585 quiet command feedback', () => {
     expect(screen.queryByText(/命令送出中/)).not.toBeInTheDocument();
     expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
     // The confirmed content stays on screen, locked, while the command is in flight.
-    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeInTheDocument();
     expect(screen.getByTestId('cloud-day-vendors-content')).toHaveAttribute('inert');
     repository.loadSnapshot.mockResolvedValueOnce(openedSnapshot());
     await act(async () => resolveSave(successful(commandId, 'SetOpeningCash', { dayId: today })));
@@ -1401,7 +1402,7 @@ describe('CloudDayVendorsPage: #585 quiet command feedback', () => {
 
     expect(screen.queryByText(/正在從伺服器載入完整營業日/)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeInTheDocument();
     expect(screen.getByTestId('cloud-day-vendors-content')).toHaveAttribute('inert');
     expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
     expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
@@ -1422,11 +1423,11 @@ describe('CloudDayVendorsPage: #585 quiet command feedback', () => {
     renderPage();
     await submitOpening();
     await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeInTheDocument();
 
     await act(async () => failRead());
     expect(await screen.findByText(/登入狀態已失效/)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: `${today} 營業日` })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: `${withWeekday(today)} 營業日` })).not.toBeInTheDocument();
     expect(screen.queryByTestId('cloud-day-vendors-content')).not.toBeInTheDocument();
   });
 
@@ -1471,12 +1472,12 @@ describe('CloudDayVendorsPage: #587 P2 data updated elsewhere', () => {
   it('shows nothing when the snapshot is at the head, or there is no head', async () => {
     headMock.current = head(10);
     const view = renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
     view.unmount();
     headMock.current = null;
     renderPage();
-    await screen.findByRole('heading', { name: `${today} 營業日` });
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 });

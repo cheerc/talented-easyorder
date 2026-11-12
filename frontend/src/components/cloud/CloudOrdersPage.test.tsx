@@ -6,6 +6,7 @@ import type { CloudDayRecord } from '../../firebase/cloudDayVendorRepository';
 import type { CloudOrderSnapshot, CloudOrderTransactionRecord } from '../../firebase/cloudOrderRepository';
 import type { CommandResult } from '../../domain/cloudCommands';
 import { CloudOrdersPage, type CloudOrdersPageProps } from './CloudOrdersPage';
+import { withWeekday } from '../../test/withWeekday';
 
 const repositoryMock = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
@@ -1875,9 +1876,9 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     const banner = await screen.findByTestId('backfill-banner');
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledWith({ dayId: GAP });
     // The title is only the day; the reason is a small line under it (#689).
-    expect(within(banner).getByText(`正在補登 ${GAP}`)).toBeVisible();
+    expect(within(banner).getByText(`正在補登 ${withWeekday(GAP)}`)).toBeVisible();
     expect(within(banner).getByText('原因：那天斷線')).toBeVisible();
-    expect(within(banner).getByText(`正在補登 ${GAP}`)).not.toHaveTextContent('原因');
+    expect(within(banner).getByText(`正在補登 ${withWeekday(GAP)}`)).not.toHaveTextContent('原因');
     const field = screen.getByLabelText('營業日');
     expect(field.tagName).toBe('SELECT');
     expect(field).toHaveValue(GAP);
@@ -1911,7 +1912,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
     renderComponent('uid-1:1', GAP);
     await selectStudent('002');
-    expect(screen.getByText(new RegExp(`${GAP} 尚未設定菜單`))).toBeVisible();
+    expect(screen.getByText(new RegExp(`${withWeekday(GAP)} 尚未設定菜單`))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
     fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '水餃' } });
     fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '70' } });

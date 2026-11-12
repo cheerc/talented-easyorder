@@ -40,6 +40,7 @@ import type { DataHeadSignal } from '../../firebase/dataHeadWatch';
 import { useDataHead } from '../../providers/FirebaseProvider';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
+import { formatBusinessDate } from '../../utils/businessDate';
 import { formatTaipeiTime } from '../../utils/dateTime';
 import { cloudPendingJournalForRepository, type PendingCommandIdentity } from '../../firebase/cloudPendingJournal';
 import { CloudAccountBalance } from './CloudAccountBalance';
@@ -1744,8 +1745,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     <ActionCard
       layout={layout}
       icon={<UtensilsCrossed size={32} strokeWidth={1.6} />}
-      title={backfillView ? `${businessDate} 尚未設定菜單` : '今日尚未設定菜單'}
-      description={`${businessDate}・設定後就能訂購${backfillView ? '當日' : '今日'}餐點`}
+      title={backfillView ? `${formatBusinessDate(businessDate)} 尚未設定菜單` : '今日尚未設定菜單'}
+      description={`${formatBusinessDate(businessDate)}・設定後就能訂購${backfillView ? '當日' : '今日'}餐點`}
       actionLabel="前往設定菜單與開帳（F3）"
       onClick={() => onOpenSettings?.()}
       disabled={!onOpenSettings}
@@ -1770,8 +1771,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               value={backfillView ? businessDate : ''}
               disabled={busy || page.loading}
               options={[
-                { value: '', label: `今天（${snapshot.today}）` },
-                ...snapshot.backfillDays.map(item => ({ value: item.dayId, label: `補登中 ${item.dayId}` })),
+                { value: '', label: `今天 ${formatBusinessDate(snapshot.today)}` },
+                ...snapshot.backfillDays.map(item => ({ value: item.dayId, label: `補登中 ${formatBusinessDate(item.dayId)}` })),
               ]}
               onConfirm={value => void loadSnapshot({ dayId: value === '' ? null : value })}
               status={backfillView ? '補登中' : '今天'}
@@ -1781,7 +1782,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               id="orders-business-date"
               variant="static"
               size="compact"
-              value={businessDate || '—'}
+              value={businessDate ? formatBusinessDate(businessDate) : '—'}
               status={snapshot && businessDate ? '今天' : undefined}
             />
           )}
@@ -1815,7 +1816,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       {/* 畫面用語「補登」＝程式／資料中的 backfill（用語對照見日結契約開頭）；識別字與 testid 不改名。 */}
       {snapshot && backfill && (
         <div className="cloud-orders__backfill-banner" role="status" data-testid="backfill-banner">
-          <strong>正在補登 {backfill.dayId}</strong>
+          <strong>正在補登 {formatBusinessDate(backfill.dayId)}</strong>
           <small className="cloud-orders__backfill-reason">原因：{backfill.reason}</small>
           <span>
             這裡補登的訂餐、繳費與櫃台收支都記在 {backfill.dayId}，並標為「補登」。補登中不能退款，也不能撤回或取消並退款。
@@ -1929,8 +1930,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                 <ActionCard
                   layout="hero"
                   icon={<CalendarPlus size={32} strokeWidth={1.6} />}
-                  title={backfillView ? `${businessDate} 尚未開帳` : '今日尚未開帳'}
-                  description={`${businessDate}・設定後就能開始點餐`}
+                  title={backfillView ? `${formatBusinessDate(businessDate)} 尚未開帳` : '今日尚未開帳'}
+                  description={`${formatBusinessDate(businessDate)}・設定後就能開始點餐`}
                   actionLabel="前往設定菜單與開帳（F3）"
                   onClick={() => onOpenSettings?.()}
                   disabled={!onOpenSettings}

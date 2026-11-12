@@ -18,6 +18,7 @@ import {
   upsertDocument,
   PROJECT,
 } from './helpers/seed';
+import { withWeekday } from './helpers/businessDate';
 
 const VACANT_LEASE = { holderUid: null, epoch: 0, updatedAt: new Date() };
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
@@ -831,7 +832,7 @@ test.describe('P08 Cloud Orders', () => {
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
-      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      await expect(mainVendors.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
 
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
       if (await createDayBtn.isVisible().catch(() => false)) {
@@ -1024,7 +1025,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
-      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      await expect(mainVendors.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
       if (await createDayBtn.isVisible().catch(() => false)) {
         await createDayBtn.click();
@@ -1145,7 +1146,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
-      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      await expect(mainVendors.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
       if (await createDayBtn.isVisible().catch(() => false)) {
         await createDayBtn.click();
@@ -1243,7 +1244,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
       }
-      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      await expect(mainVendors.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
       if (await createDayBtn.isVisible().catch(() => false)) {
         await createDayBtn.click();
@@ -1465,7 +1466,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
         if ((await dateField.inputValue()) !== today) {
           await dateField.fill(today);
         }
-        await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+        await expect(mainVendors.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
         const createDayBtn = pageA.getByRole('button', { name: '建立空白營業日' });
         if (await createDayBtn.isVisible().catch(() => false)) await createDayBtn.click();
         const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
@@ -1554,7 +1555,7 @@ test.describe('P11 Cloud Day Close', () => {
       if ((await readAdminDocument('days', today))?.openingCash == null) {
         await settings(page, '菜單與開帳');
         const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-        await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+        await expect(mainVendors.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toBeVisible();
         const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
         if (await createDayBtn.isVisible().catch(() => false)) await createDayBtn.click();
         const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
@@ -1570,7 +1571,7 @@ test.describe('P11 Cloud Day Close', () => {
       // 2. 日結頁：應有現金由伺服器統計算出；實點少 10 元，沒填原因不能關帳
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
       const main = page.getByRole('main', { name: '雲端日結' });
-      await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(today)} 日結` })).toBeVisible();
       await expect(main.getByLabel('營業日現金統計')).toContainText(money(expected));
       const dayState = main.getByTestId('cloud-day-state');
       await expect(dayState).toContainText('今天');
@@ -1630,7 +1631,7 @@ test.describe('P11 Cloud Day Close', () => {
       await enterSystem(second.page);
       await second.page.getByRole('button', { name: '今日帳', exact: true }).click();
       const main = second.page.getByRole('main', { name: '雲端日結' });
-      await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(today)} 日結` })).toBeVisible();
       await expect(main.getByText('已關帳', { exact: true })).toBeVisible();
       await expect(main.getByTestId('cloud-settlement-1')).toContainText('找零少收 10 元');
       await expect(main.getByTestId('cloud-settlement-3')).toBeVisible();
@@ -1698,7 +1699,7 @@ test.describe('P11c2b Cloud Backfill', () => {
 
       // 2. 日結頁：補登原因必填，標記成功後可以到訂餐頁
       const main = page.getByRole('main', { name: '雲端日結' });
-      await expect(main.getByRole('heading', { name: `${gap} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(gap)} 日結` })).toBeVisible();
       const form = main.getByRole('form', { name: `${gap} 開始補登這一天` });
       await form.getByRole('button', { name: '確認開始補登這一天' }).click();
       // The empty reason is stopped in the form (native required); nothing reaches the server.
@@ -1823,7 +1824,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
 
       // 2. 日結頁三步：建日 → 補開帳（預設 870）→ 標記，一次表單送出
       const main = page.getByRole('main', { name: '雲端日結' });
-      await expect(main.getByRole('heading', { name: `${gap} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(gap)} 日結` })).toBeVisible();
       const form = main.getByRole('form', { name: `${gap} 開始補登這一天` });
       await expect(form.getByRole('textbox', { name: /開帳現金（元）/ })).toHaveValue('870');
       await form.getByRole('textbox', { name: /補登原因/ }).fill('那天網路中斷，整天沒有用系統');
@@ -1953,7 +1954,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       await anomaly.click();
 
       const main = page.getByRole('main', { name: '雲端日結' });
-      await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(previous)} 日結` })).toBeVisible();
       const form = main.getByRole('form', { name: `${previous} 關帳後補記` });
       await expect(form.getByLabel('收支方向')).toHaveValue('expense');
       await expect(form.getByLabel('金額（元）')).toHaveValue('50');
@@ -1977,7 +1978,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
 
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
       await main.getByLabel('營業日', { exact: true }).fill(previous);
-      await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
+      await expect(main.getByRole('heading', { name: `${withWeekday(previous)} 日結` })).toBeVisible();
       await main.getByRole('button', { name: '重開這一天' }).click();
       const reopen = main.getByRole('form', { name: `${previous} 重開` });
       await reopen.getByLabel(/重開原因/).fill('重新盤點，將補記支出納入本次實點');

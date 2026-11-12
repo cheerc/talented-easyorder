@@ -40,6 +40,7 @@ import { Callout } from '../ui/Callout';
 import { seqWithOwnReceipts, useOwnReceiptSeqs } from './ownReceiptSeqs';
 import './CloudReportPage.css';
 import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
+import { formatBusinessDate } from '../../utils/businessDate';
 
 export interface CloudReportPageProps {
   db: Firestore;
@@ -956,7 +957,7 @@ export function CloudReportPage({
             <tbody>{snapshot.report.days.length === 0 ? (
               <tr><td colSpan={9}><EmptyState className="cloud-report__empty" title="此區間沒有營業日資料。" /></td></tr>
             ) : snapshot.report.days.map(day => <tr key={day.businessDate}>
-              <td>{day.businessDate}</td><td><StatusBadge variant={reportDayStatusVariant(day.status)} className="cloud-report__status">{reportDayStatusLabel(day.status)}</StatusBadge></td><td className="dt-num">{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
+              <td>{formatBusinessDate(day.businessDate)}</td><td><StatusBadge variant={reportDayStatusVariant(day.status)} className="cloud-report__status">{reportDayStatusLabel(day.status)}</StatusBadge></td><td className="dt-num">{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
               <td className="dt-num">{day.totals ? money(day.totals.mealTotal) : '—'}</td><td className="dt-num">{day.totals ? money(day.totals.retainedReceipts) : '—'}</td>
               <td className="dt-num">{day.totals ? `${money(day.totals.cashierIncome)} / ${money(day.totals.cashierExpense)}` : '—'}</td>
               <td className="dt-num">{day.totals ? money(day.totals.accountRefunds) : '—'}</td>
@@ -1006,7 +1007,7 @@ export function CloudReportPage({
               const balance = row.afterBalance;
               const mealText = merged ? row.otherMealItems.join('、') || row.menuNameSnapshot : row.menuNameSnapshot || row.otherItemName || '—';
               return <tr key={`${merged ? 'merged' : 'raw'}:${row.transactionId}`}>
-                <td><small>{transactionIds.join(' · ')}</small></td><td>{row.businessDate}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
+                <td><small>{transactionIds.join(' · ')}</small></td><td>{formatBusinessDate(row.businessDate)}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
                 <td>{merged ? row.kind : row.type} · <StatusBadge variant={transactionStatusVariant(row.status)} className="cloud-report__status">{transactionStatusLabel(row.status)}</StatusBadge></td><td>{mealText}</td>
                 <td className="dt-num">{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
                 <td className="dt-num">{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} />}</td>
@@ -1068,7 +1069,7 @@ export function CloudReportPage({
             const transactionIds = 'kind' in row ? row.transactionIds : [row.transactionId];
             return <tr key={row.transactionId} data-merged-row={'kind' in row ? 'true' : undefined}>
               <td>{transactionIds.map((id, index) => <span key={id}>{index > 0 ? ' · ' : ''}{id}</span>)}</td>
-              <td>{row.businessDate}</td><td>{row.studentId}</td><td>{row.studentNameSnapshot}</td>
+              <td>{formatBusinessDate(row.businessDate)}</td><td>{row.studentId}</td><td>{row.studentNameSnapshot}</td>
               <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : formatAccountBalanceText(row.afterBalance)}</td>
             </tr>;
           })}</tbody>

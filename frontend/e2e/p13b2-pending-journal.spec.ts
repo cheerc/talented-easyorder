@@ -4,6 +4,7 @@ import type { Page, Request } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { removeDocument, seedAccessLease, upsertDocument } from './helpers/seed';
 import { seedClosedDayForBackup } from './helpers/scenarios';
+import { withWeekday } from './helpers/businessDate';
 
 const DATASET_ID = 'e2e-empty-p06-dataset';
 const APP_NAMESPACE = 'easyorder-cloud-command-journal:v1:demo-easyorder:%5BDEFAULT%5D';
@@ -1753,7 +1754,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(recovery).toContainText(commandId);
       await expect(recovery).not.toContainText('伺服器命令序號');
       await expect(page.locator('.cloud-day-vendors__alert')).toContainText(/伺服器資料集或營業日已變更/);
-      await expect(page.getByRole('heading', { name: `${today} 營業日` })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       await expect(page.getByText(new RegExp(`已確認 設定 ${today} 菜單 完成`))).toHaveCount(0);
       expect(writeResponseReturned).toBe(true);
@@ -1763,7 +1764,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await page.getByRole('button', { name: '重新載入伺服器資料' }).click();
       await expect(page.getByText(/伺服器資料集或營業日已變更/)).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
-      await expect(page.getByRole('heading', { name: `${today} 營業日` })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(await readPendingIdentity(page, commandId)).toBeNull();
 
@@ -1973,14 +1974,14 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
       await expect(recovery).toContainText(commandId);
       await expect(recovery).not.toContainText('伺服器命令序號');
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
-      await expect(page.getByRole('heading', { name: `${today} 日結` })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: `${withWeekday(today)} 日結` })).toHaveCount(0);
       await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
 
       await page.getByRole('button', { name: '重新載入伺服器資料' }).first().click();
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
-      await expect(page.getByRole('heading', { name: `${today} 日結` })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: `${withWeekday(today)} 日結` })).toHaveCount(0);
       expect(await readPendingIdentity(page, commandId)).toBeNull();
       expect(held.state.matched).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
