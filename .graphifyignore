@@ -1,0 +1,5 @@
+# graphify scope: source code and docs; tests are noise for relationship questions
+**/__tests__/
+*.test.*
+*.spec.*
+frontend/e2e/

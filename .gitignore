@@ -37,3 +37,10 @@ ui-debug.log
 
 # Private local release inputs and generated bundles
 .easyorder/
+
+# Local code-graph indexes (graphify, CodeGraph); never commit
+graphify-out/
+.codegraph/
+
+# Claude Code git worktrees (other .claude/ assets stay tracked)
+.claude/worktrees/

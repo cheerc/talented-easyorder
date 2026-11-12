@@ -1,13 +1,15 @@
-// docs-only 變更分類：白名單（任何路徑的 *.md，加 docs/ 下的文件素材）。
+// docs-only 變更分類：白名單（任何路徑的 *.md、docs/ 下的文件素材，及任何路徑的 .graphifyignore）。
 // 白名單外一律視為非文件，預設走完整 CI（誤判只會多跑，不會少跑）。
 import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const MARKDOWN = /\.md$/;
 const DOCS_ASSET = /^docs\/.+\.(pdf|png|jpe?g|gif|svg|txt)$/i;
+// graphify 索引範圍設定，只影響 agent 本機查詢，不進 build／test。
+const GRAPHIFY_IGNORE = /(^|\/)\.graphifyignore$/;
 
 export function isDocsPath(path) {
-  return MARKDOWN.test(path) || DOCS_ASSET.test(path);
+  return MARKDOWN.test(path) || DOCS_ASSET.test(path) || GRAPHIFY_IGNORE.test(path);
 }
 
 export function classify(paths) {
@@ -52,7 +54,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { docsOnly, nonDocs } = classify(paths);
   const changed = paths.filter((p) => p !== '');
   if (changed.length === 0) console.log('No changed files detected, running full CI');
-  else if (docsOnly) console.log(`All ${changed.length} changed files are docs (*.md or docs/ assets) -> docs-only`);
+  else if (docsOnly) console.log(`All ${changed.length} changed files are docs (*.md, docs/ assets or .graphifyignore) -> docs-only`);
   else console.log(`Non-docs changes detected, running full CI:\n${nonDocs.join('\n')}`);
   const line = `docs_only=${docsOnly}\n`;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, line);
