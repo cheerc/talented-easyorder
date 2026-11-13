@@ -1653,6 +1653,30 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       }
     });
 
+    it('#710 P2: the recovery panel re-read is the only reload entry and passes the original receipt (no standing header button)', async () => {
+      vi.useFakeTimers();
+      try {
+        const onLedgerChanged = vi.fn();
+        await heldClose({ onLedgerChanged });
+        repository.loadSnapshot.mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' });
+        fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+        await flush();
+        const panel = screen.getByRole('alert', { name: '命令結果確認' });
+        expect(panel).toHaveTextContent(commandId);
+        expect(screen.queryByRole('button', { name: '重新載入伺服器資料' })).not.toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: '重新讀取伺服器資料' })).toHaveLength(1);
+
+        closedSnapshotRefresh();
+        fireEvent.click(within(panel).getByRole('button', { name: '重新讀取伺服器資料' }));
+        await flush();
+        expect(screen.getByText(/已確認 2026-10-17 關帳 完成/)).toBeInTheDocument();
+        expect(repository.closeDay).toHaveBeenCalledOnce();
+        expect(onLedgerChanged).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it.each([
       ['dataset', () => { repository.dataset.id = 'replacement-dataset'; }],
       ['day', () => {
@@ -2585,5 +2609,24 @@ describe('CloudDayClosePage: the banner and the no-business list leave out the v
     fireEvent.click(chip);
     expect(await screen.findByRole('heading', { name: `${withWeekday(gap)} 日結` })).toBeInTheDocument();
     expect(within(screen.getByTestId('cloud-day-state')).getByText(text)).toHaveClass('badge-ui', 'badge-warn');
+  });
+});
+
+describe('CloudDayClosePage: #710 P2 no standing reload button', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    headMock.current = null;
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockResolvedValue(dayState());
+    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 20 });
+    repository.readCommand.mockResolvedValue(null);
+    repository.readLedger.mockResolvedValue({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
+  });
+
+  it('has no 「重新載入伺服器資料」 button in the page header once the day is loaded', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 日結` });
+    expect(screen.queryByRole('button', { name: '重新載入伺服器資料' })).not.toBeInTheDocument();
   });
 });

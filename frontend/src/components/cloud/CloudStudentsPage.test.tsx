@@ -1056,4 +1056,34 @@ describe('CloudStudentsPage', () => {
       expect(screen.getByRole('tooltip')).toHaveTextContent('瀏覽器日期只用於顯示與預填');
     });
   });
+  describe('#710 P2: no standing reload button; the panel re-read is the receipt entry', () => {
+    it('has no standing 「重新載入名單」 button in the page header once the list is loaded', async () => {
+      renderPage();
+      await screen.findByText(/目前伺服器名單是空的/);
+      expect(screen.queryByRole('button', { name: '重新載入名單' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '新增學生' })).toBeInTheDocument();
+    });
+
+    it('re-reads only the list from the recovery panel after a confirmed receipt, keeping the same command and writing nothing new', async () => {
+      repository.list
+        .mockResolvedValueOnce(snapshot())
+        .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' })
+        .mockResolvedValueOnce(snapshot([student('001', { displayName: '新學生' })]));
+      renderPage();
+      await screen.findByText(/目前伺服器名單是空的/);
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+
+      expect(await screen.findByText('已找到伺服器回執，名單尚待再次讀取。')).toBeInTheDocument();
+      expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '重新載入名單' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器名單' }));
+
+      expect(await screen.findByText(/已確認 新增 001 完成/)).toBeInTheDocument();
+      expect(repository.createStudent).toHaveBeenCalledTimes(1);
+      expect(repository.list).toHaveBeenCalledTimes(3);
+      expect(repository.confirmPendingIntent).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1481,3 +1481,87 @@ describe('CloudDayVendorsPage: #587 P2 data updated elsewhere', () => {
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 });
+
+describe('CloudDayVendorsPage: #710 P2 no standing reload button; the panel re-read and the view switch are the entries', () => {
+  const commandId = '00000000-0000-4000-8000-000000000007';
+  const viewedDay = (overrides: Partial<CloudDayVendorSnapshot> = {}) => snapshot({
+    dayId: future,
+    selectionDate: today,
+    day: { ...snapshot().day!, dayId: future, revision: 8 },
+    ...overrides,
+  });
+  // Stable props like App's memoized ones: a new object per render would itself be a scope change.
+  const db = {} as Firestore;
+  const operatorSelf = { uid: 'uid-a', name: '測試操作員甲' };
+  const renderView = (view: 'day' | 'vendors' | 'combined') => (
+    <CloudDayVendorsPage db={db} leaseEpoch={4} identityKey="uid-a:4" operatorSelf={operatorSelf} view={view} />
+  );
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.loadSnapshot.mockResolvedValue(snapshot());
+    repository.setOpeningCash.mockResolvedValue(successful(commandId, 'SetOpeningCash', { dayId: today }));
+    repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    repository.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  it('has no standing 「重新載入伺服器資料」 button in the page header once the data is loaded', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
+    expect(screen.queryByRole('button', { name: '重新載入伺服器資料' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the receipt re-read in the recovery panel as the only reload entry: same command, no new write', async () => {
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot())
+      .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' })
+      .mockResolvedValueOnce(snapshot({ day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' } }));
+    renderPage();
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '80' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+
+    const panel = await screen.findByRole('alert', { name: '命令結果確認' });
+    expect(panel).toHaveTextContent(commandId);
+    expect(screen.queryByRole('button', { name: '重新載入伺服器資料' })).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: '重新讀取伺服器資料' }));
+    expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
+    expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it('re-reads the viewed date when the page switches between the day and vendors views', async () => {
+    repository.loadSnapshot.mockResolvedValue(viewedDay());
+    const page = render(renderView('day'));
+    await screen.findByRole('heading', { name: `${withWeekday(future)} 菜單` });
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
+
+    page.rerender(renderView('vendors'));
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(repository.loadSnapshot).toHaveBeenLastCalledWith(future);
+
+    page.rerender(renderView('day'));
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(3));
+    expect(repository.loadSnapshot).toHaveBeenLastCalledWith(future);
+  });
+
+  it('does not re-read on a view switch while a command is unresolved', async () => {
+    repository.setOpeningCash.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    const page = render(renderView('day'));
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '15' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+    await screen.findByText('結果確認中，請勿重複操作。');
+
+    page.rerender(renderView('vendors'));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
+    expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
+  });
+});

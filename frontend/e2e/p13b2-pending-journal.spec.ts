@@ -1775,7 +1775,9 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
       expect((await readEmulatorDocument('system', 'dataHead')).fields?.datasetId).toEqual({ stringValue: datasetB });
 
-      await page.getByRole('button', { name: '重新載入伺服器資料' }).click();
+      // #710 P2：頁首不再有常駐「重新載入伺服器資料」；回執的重新讀取只剩恢復面板這一個入口。
+      await expect(page.getByRole('button', { name: '重新載入伺服器資料' })).toHaveCount(0);
+      await page.getByRole('alert', { name: '命令結果確認' }).getByRole('button', { name: '重新讀取伺服器資料' }).click();
       await expect(page.getByText(/伺服器資料集或營業日已變更/)).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
       await expect(page.getByRole('heading', { name: `${withWeekday(today)} 營業日` })).toHaveCount(0);
@@ -1993,7 +1995,9 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       await expect(page.getByRole('button', { name: '訂餐櫃台，回到櫃台並重新整理' })).toBeDisabled();
 
-      await page.getByRole('button', { name: '重新載入伺服器資料' }).first().click();
+      // #710 P2：頁首不再有常駐「重新載入伺服器資料」；回執的重新讀取只剩恢復面板這一個入口。
+      await expect(page.getByRole('button', { name: '重新載入伺服器資料' })).toHaveCount(0);
+      await page.getByRole('alert', { name: '命令結果確認' }).getByRole('button', { name: '重新讀取伺服器資料' }).click();
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
       await expect(page.getByRole('heading', { name: `${withWeekday(today)} 日結` })).toHaveCount(0);
