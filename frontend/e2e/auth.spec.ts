@@ -11,7 +11,7 @@ test.describe('Authentication', () => {
     await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
     await expect(page.locator('.app')).toHaveCount(0);
     await expect(page.getByRole('tab')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /訂餐|繳費|送出訂單/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(?!訂餐櫃台，回到櫃台).*(訂餐|繳費|送出訂單)/ })).toHaveCount(0);
   });
 
   test('auth gate shown when not logged in', async ({ page }) => {

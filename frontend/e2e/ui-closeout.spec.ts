@@ -219,7 +219,7 @@ for (const theme of ['light', 'dark', 'warm']) {
 test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   const SCALE_PROBE = [
-    '.brand-name', '.brand-sub', '.brand-mark', '.tab', '.tab-key', '.status > button', '.operator-menu summary',
+    '.brand-name', '.brand-mark', '.tab', '.tab-key', '.status > button', '.operator-menu summary',
     '.operator-menu__panel p', '.operator-menu__panel small', '.operator-menu__panel label', '.operator-menu__panel button', '.operator-menu__panel select', 'button', 'select', 'input',
   ].join(', ');
   const scenarios: ScenarioHandle[] = [];

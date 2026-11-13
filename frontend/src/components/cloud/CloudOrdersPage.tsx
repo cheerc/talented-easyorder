@@ -55,7 +55,6 @@ export interface CloudOrdersPageProps {
   /** 第一次載入時要顯示的回填營業日（例如從日結頁或異常頁帶過來）；沒提供則顯示伺服器今天。 */
   initialBackfillDayId?: string;
   onDraftCleared?: () => void;
-  onViewDayChange?: (date: string, backfill: boolean) => void;
   /** 櫃台頁「到今日設定」連結；由外殼決定實際分頁（P3 只提供入口，不改導覽行為）。 */
   onOpenSettings?: () => void;
 }
@@ -494,7 +493,7 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
   return '僅繳費';
 }
 
-export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId, onViewDayChange, onDraftCleared, onOpenSettings }: CloudOrdersPageProps) {
+export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId, onDraftCleared, onOpenSettings }: CloudOrdersPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   // #587: the server data head, watched by the provider while this tab is a confirmed holder (null elsewhere, e.g. in tests).
   const dataHead = useDataHead();
@@ -845,7 +844,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const businessDate = snapshot?.businessDate ?? today;
   const backfill = snapshot?.backfill ?? null;
   const backfillView = backfill !== null;
-  useEffect(() => { if (businessDate) onViewDayChange?.(businessDate, backfillView); }, [businessDate, backfillView, onViewDayChange]);
   const dayWord = backfillView ? '這一天' : '今日';
   const day = snapshot?.day ?? null;
   const todayMenu = day?.menu ?? null;

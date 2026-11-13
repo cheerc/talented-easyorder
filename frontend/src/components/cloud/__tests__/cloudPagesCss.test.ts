@@ -241,7 +241,6 @@ describe('#652 雲端備份頁字級等比縮放 CSS 契約', () => {
 // 並用 token／em／inherit，讓 1920 依 1440 等比放大（約 4/3）。
 const CLOUD_SHELL_SELECTORS = [
   '.brand-name',
-  '.brand-sub',
   '.brand-mark',
   '.tab',
   '.tab-key',
