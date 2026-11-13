@@ -1071,7 +1071,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
       await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
       await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
-      await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
+      // #710 P2：頁首沒有常駐的「載入中…／重新載入名單」按鈕；讀取期間唯一的重新讀取入口（恢復面板）已是 disabled。
+      await expect(page.getByRole('button', { name: /^(載入中…|重新載入名單)$/ })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       const f5Prevented = await page.evaluate(() => {
         const event = new KeyboardEvent('keydown', { key: 'F5', bubbles: true, cancelable: true });
@@ -1173,7 +1174,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
       await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
       await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
-      await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
+      // #710 P2：頁首沒有常駐的「載入中…／重新載入名單」按鈕；讀取期間唯一的重新讀取入口（恢復面板）已是 disabled。
+      await expect(page.getByRole('button', { name: /^(載入中…|重新載入名單)$/ })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
