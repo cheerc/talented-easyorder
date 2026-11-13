@@ -784,13 +784,14 @@ describe('CloudDayVendorsPage', () => {
     expect(text).not.toContain('舊身分草稿');
   });
 
-  it('does not restore a pending command result after a concurrent header reload loses authorization', async () => {
+  // #710 P2: the standing header reload is gone and the notice is hidden while a command is in flight, so no read can be started
+  // concurrently from the page any more. The authorization-loss clearing itself stays covered by the command-response test above.
+  it('offers no reload control while a command is in flight, and the pending result still completes normally', async () => {
     let resolveSave!: (result: CommandResult) => void;
-    let rejectReload!: (error: unknown) => void;
     repository.saveVendor.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveSave = resolve; }));
     repository.loadSnapshot
       .mockResolvedValueOnce(snapshot())
-      .mockReturnValueOnce(new Promise<CloudDayVendorSnapshot>((_resolve, reject) => { rejectReload = reject; }));
+      .mockResolvedValueOnce(snapshot({ vendors: [vendor('pending-private-id', { name: '待回填供應商' })] }));
     renderPage();
     await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
@@ -800,31 +801,25 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(within(createForm).getByRole('button', { name: '建立供應商' }));
     await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
-    fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
-    await screen.findByText(/正在從伺服器載入完整營業日/);
-    await act(async () => { rejectReload({ code: 'LEASE_LOST', message: 'lease changed' }); });
-    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
     await act(async () => {
       resolveSave(successful('00000000-0000-4000-8000-000000000007', 'SaveVendor', { vendorId: 'pending-private-id' }));
     });
-
-    const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
-    expect(text).not.toContain('pending-private-id');
-    expect(text).not.toContain('待回填供應商');
-    expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(repository.saveVendor).toHaveBeenCalledTimes(1);
   });
 
-  it('invalidates a concurrent pending list when receipt lookup loses authorization', async () => {
+  // #710 P2: while the original command is being checked no reload control is reachable (header button removed, notice hidden by the
+  // progress state, the panel offers only the receipt query), so the old "concurrent list" cannot be started from the page.
+  it('offers no reload control while the receipt is being checked, and clears everything when that lookup loses authorization', async () => {
     let rejectConfirmation!: (error: unknown) => void;
-    let resolveList!: (value: CloudDayVendorSnapshot) => void;
     repository.setOpeningCash.mockResolvedValueOnce({
       ok: false,
       error: { code: 'UNKNOWN_RESULT', message: 'unknown' },
     });
     repository.confirmPendingIntent.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectConfirmation = reject; }));
-    repository.loadSnapshot
-      .mockResolvedValueOnce(snapshot())
-      .mockReturnValueOnce(new Promise<CloudDayVendorSnapshot>(resolve => { resolveList = resolve; }));
+    repository.loadSnapshot.mockResolvedValueOnce(snapshot());
     renderPage();
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '15' } });
@@ -834,18 +829,12 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     await screen.findByText('正在查詢原命令結果…');
 
-    fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
-    await screen.findByText(/正在從伺服器載入完整營業日/);
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     await act(async () => { rejectConfirmation({ code: 'UNAUTHORIZED', message: 'not authorized' }); });
     expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
-    await act(async () => {
-      resolveList(snapshot({ vendors: [vendor('private-after-revoke', { name: '不得回填的供應商' })] }));
-    });
 
-    const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
-    expect(text).not.toContain('不得回填的供應商');
-    expect(text).not.toContain('private-after-revoke');
-    expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the same-identity authorization revoke latch closed against manual reload', async () => {
@@ -863,9 +852,11 @@ describe('CloudDayVendorsPage', () => {
     expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
 
     view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" />);
-    const reload = screen.getByRole('button', { name: '重新載入伺服器資料' });
-    expect(reload).toBeDisabled();
-    fireEvent.click(reload);
+    // After the revoke no manual reload control is shown (the command ID stays in the recovery state), and the only remaining
+    // automatic entry, the day↔vendors view switch, keeps the same-identity latch closed too.
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
+    view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" view="vendors" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
     const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
     expect(text).not.toContain('latch-private-id');
@@ -1479,5 +1470,89 @@ describe('CloudDayVendorsPage: #587 P2 data updated elsewhere', () => {
     renderPage();
     await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+  });
+});
+
+describe('CloudDayVendorsPage: #710 P2 no standing reload button; the panel re-read and the view switch are the entries', () => {
+  const commandId = '00000000-0000-4000-8000-000000000007';
+  const viewedDay = (overrides: Partial<CloudDayVendorSnapshot> = {}) => snapshot({
+    dayId: future,
+    selectionDate: today,
+    day: { ...snapshot().day!, dayId: future, revision: 8 },
+    ...overrides,
+  });
+  // Stable props like App's memoized ones: a new object per render would itself be a scope change.
+  const db = {} as Firestore;
+  const operatorSelf = { uid: 'uid-a', name: '測試操作員甲' };
+  const renderView = (view: 'day' | 'vendors' | 'combined') => (
+    <CloudDayVendorsPage db={db} leaseEpoch={4} identityKey="uid-a:4" operatorSelf={operatorSelf} view={view} />
+  );
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.loadSnapshot.mockResolvedValue(snapshot());
+    repository.setOpeningCash.mockResolvedValue(successful(commandId, 'SetOpeningCash', { dayId: today }));
+    repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    repository.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  it('has no standing 「重新載入伺服器資料」 button in the page header once the data is loaded', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
+    expect(screen.queryByRole('button', { name: '重新載入伺服器資料' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the receipt re-read in the recovery panel as the only reload entry: same command, no new write', async () => {
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot())
+      .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' })
+      .mockResolvedValueOnce(snapshot({ day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' } }));
+    renderPage();
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '80' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+
+    const panel = await screen.findByRole('alert', { name: '命令結果確認' });
+    expect(panel).toHaveTextContent(commandId);
+    expect(screen.queryByRole('button', { name: '重新載入伺服器資料' })).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: '重新讀取伺服器資料' }));
+    expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
+    expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it('re-reads the viewed date when the page switches between the day and vendors views', async () => {
+    repository.loadSnapshot.mockResolvedValue(viewedDay());
+    const page = render(renderView('day'));
+    await screen.findByRole('heading', { name: `${withWeekday(future)} 菜單` });
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
+
+    page.rerender(renderView('vendors'));
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(repository.loadSnapshot).toHaveBeenLastCalledWith(future);
+
+    page.rerender(renderView('day'));
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(3));
+    expect(repository.loadSnapshot).toHaveBeenLastCalledWith(future);
+  });
+
+  it('does not re-read on a view switch while a command is unresolved', async () => {
+    repository.setOpeningCash.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    const page = render(renderView('day'));
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '15' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+    await screen.findByText('結果確認中，請勿重複操作。');
+
+    page.rerender(renderView('vendors'));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
+    expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
   });
 });
