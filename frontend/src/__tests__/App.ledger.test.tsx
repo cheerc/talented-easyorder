@@ -1,4 +1,4 @@
-import { fireEvent, act, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { CloudLedgerSnapshot } from '../firebase/cloudDayCloseRepository';
@@ -80,10 +80,10 @@ describe('cloud navigation: ledger anomalies entry', () => {
   });
 
   it('does not show the business date in the shell brand even when the ledger is ready (#710)', async () => {
-    appMocks.read.mockResolvedValue(snapshot([]));
+    appMocks.read.mockResolvedValue(snapshot([unclosed('2026-10-15')]));
     render(<App />);
-    await waitFor(() => expect(appMocks.read).toHaveBeenCalled());
-    await act(async () => { await Promise.resolve(); });
+    // The header's anomaly count only appears once the ledger is ready: that is the visible signal to wait for.
+    expect(await screen.findByRole('button', { name: '異常 1' })).toBeVisible();
     expect(screen.queryByText('2026-10-17')).toBeNull();
     expect(screen.queryByText('營業日未確認')).toBeNull();
     expect(screen.getByRole('button', { name: '訂餐櫃台，回到櫃台並重新整理' })).toBeVisible();
