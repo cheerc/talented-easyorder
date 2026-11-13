@@ -784,13 +784,14 @@ describe('CloudDayVendorsPage', () => {
     expect(text).not.toContain('舊身分草稿');
   });
 
-  it('does not restore a pending command result after a concurrent header reload loses authorization', async () => {
+  // #710 P2: the standing header reload is gone and the notice is hidden while a command is in flight, so no read can be started
+  // concurrently from the page any more. The authorization-loss clearing itself stays covered by the command-response test above.
+  it('offers no reload control while a command is in flight, and the pending result still completes normally', async () => {
     let resolveSave!: (result: CommandResult) => void;
-    let rejectReload!: (error: unknown) => void;
     repository.saveVendor.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveSave = resolve; }));
     repository.loadSnapshot
       .mockResolvedValueOnce(snapshot())
-      .mockReturnValueOnce(new Promise<CloudDayVendorSnapshot>((_resolve, reject) => { rejectReload = reject; }));
+      .mockResolvedValueOnce(snapshot({ vendors: [vendor('pending-private-id', { name: '待回填供應商' })] }));
     renderPage();
     await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
@@ -800,31 +801,25 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(within(createForm).getByRole('button', { name: '建立供應商' }));
     await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
-    fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
-    await screen.findByText(/正在從伺服器載入完整營業日/);
-    await act(async () => { rejectReload({ code: 'LEASE_LOST', message: 'lease changed' }); });
-    expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
     await act(async () => {
       resolveSave(successful('00000000-0000-4000-8000-000000000007', 'SaveVendor', { vendorId: 'pending-private-id' }));
     });
-
-    const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
-    expect(text).not.toContain('pending-private-id');
-    expect(text).not.toContain('待回填供應商');
-    expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(repository.saveVendor).toHaveBeenCalledTimes(1);
   });
 
-  it('invalidates a concurrent pending list when receipt lookup loses authorization', async () => {
+  // #710 P2: while the original command is being checked no reload control is reachable (header button removed, notice hidden by the
+  // progress state, the panel offers only the receipt query), so the old "concurrent list" cannot be started from the page.
+  it('offers no reload control while the receipt is being checked, and clears everything when that lookup loses authorization', async () => {
     let rejectConfirmation!: (error: unknown) => void;
-    let resolveList!: (value: CloudDayVendorSnapshot) => void;
     repository.setOpeningCash.mockResolvedValueOnce({
       ok: false,
       error: { code: 'UNKNOWN_RESULT', message: 'unknown' },
     });
     repository.confirmPendingIntent.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectConfirmation = reject; }));
-    repository.loadSnapshot
-      .mockResolvedValueOnce(snapshot())
-      .mockReturnValueOnce(new Promise<CloudDayVendorSnapshot>(resolve => { resolveList = resolve; }));
+    repository.loadSnapshot.mockResolvedValueOnce(snapshot());
     renderPage();
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '15' } });
@@ -834,18 +829,12 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     await screen.findByText('正在查詢原命令結果…');
 
-    fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
-    await screen.findByText(/正在從伺服器載入完整營業日/);
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     await act(async () => { rejectConfirmation({ code: 'UNAUTHORIZED', message: 'not authorized' }); });
     expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
-    await act(async () => {
-      resolveList(snapshot({ vendors: [vendor('private-after-revoke', { name: '不得回填的供應商' })] }));
-    });
 
-    const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
-    expect(text).not.toContain('不得回填的供應商');
-    expect(text).not.toContain('private-after-revoke');
-    expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the same-identity authorization revoke latch closed against manual reload', async () => {
@@ -863,9 +852,11 @@ describe('CloudDayVendorsPage', () => {
     expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
 
     view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" />);
-    const reload = screen.getByRole('button', { name: '重新載入伺服器資料' });
-    expect(reload).toBeDisabled();
-    fireEvent.click(reload);
+    // After the revoke no manual reload control is shown (the command ID stays in the recovery state), and the only remaining
+    // automatic entry, the day↔vendors view switch, keeps the same-identity latch closed too.
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
+    view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" view="vendors" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
     const text = screen.getByRole('main', { name: '雲端日期設定與供應商管理' }).textContent ?? '';
     expect(text).not.toContain('latch-private-id');

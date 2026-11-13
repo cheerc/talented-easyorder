@@ -547,7 +547,7 @@ describe('CloudStudentsPage', () => {
     expect(repository.createStudent).toHaveBeenCalledTimes(1);
   });
 
-  it('locks manual list reload while the frozen command is unresolved', async () => {
+  it('offers no list reload control while the frozen command is unresolved (#710 P2)', async () => {
     let resolveCommand!: (result: CommandResult) => void;
     repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => {
       resolveCommand = resolve;
@@ -566,11 +566,13 @@ describe('CloudStudentsPage', () => {
 
     // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
     await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
-    expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
+    // The standing header button is gone; the notice is hidden while a command is in flight, so no reload control is reachable.
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     await act(async () => resolveCommand({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
     expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
+    // Unknown result: only the read-only receipt query is offered, never a list reload.
+    expect(screen.getByRole('button', { name: '查詢原命令結果' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     expect(repository.list).toHaveBeenCalledTimes(1);
   });
 
@@ -592,15 +594,16 @@ describe('CloudStudentsPage', () => {
         onNavigationStateChange={reportNavigationState}
       />,
     );
-    const reload = screen.getByRole('button', { name: '重新載入名單' });
-    expect(reload).toBeDisabled();
+    // The kept unavailable-section button is not disabled by the revoke state; the same-identity latch inside the loader blocks it.
+    const reload = within(screen.getByRole('region', { name: '學生名單未載入' })).getByRole('button', { name: '重新載入伺服器名單' });
     fireEvent.click(reload);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     expect(repository.list).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/重新載入整頁會再次向伺服器驗證/)).toBeInTheDocument();
   });
 
-  it('clears the frozen command after a read-only receipt query loses authorization and locks list reload', async () => {
+  it('clears the frozen command after a read-only receipt query loses authorization and offers no list reload', async () => {
     let rejectReceiptRead!: (error: unknown) => void;
     repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
     repository.list.mockResolvedValueOnce(snapshot());
@@ -615,7 +618,8 @@ describe('CloudStudentsPage', () => {
     await screen.findByText('結果確認中，請勿重複建立／修改。');
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     await waitFor(() => expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
+    // While the receipt query runs no list reload control is reachable (header button removed, notice hidden, panel has none).
+    expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
 
     await act(async () => rejectReceiptRead({ code: 'UNAUTHORIZED', message: 'token revoked' }));
     expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
@@ -631,12 +635,14 @@ describe('CloudStudentsPage', () => {
   it('clears old identity data immediately and ignores an old list promise after identity changes', async () => {
     let resolveOld!: (value: CloudStudentList) => void;
     repository.list
-      .mockResolvedValueOnce(snapshot([student('OLD-PII', { displayName: '前一位操作員資料' })]))
+      .mockResolvedValueOnce({ ...snapshot([student('OLD-PII', { displayName: '前一位操作員資料' })]), seq: 4 })
       .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
       .mockResolvedValueOnce(snapshot([student('NEW-PII', { displayName: '目前操作員資料' })]));
+    headMock.current = { seq: 5, lastCommandId: 'cmd-5', datasetId: 'demo-dataset', targets: {} };
     const view = renderPage({ identityKey: 'uid-a:4' });
     expect(await screen.findByText('前一位操作員資料')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
+    // The second (still pending) list is started from the remaining entry: the data-updated notice.
+    fireEvent.click(within(await screen.findByTestId('data-updated-notice')).getByRole('button', { name: '重新載入' }));
     await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(2));
 
     view.rerender(<CloudStudentsPage db={{} as Firestore} leaseEpoch={5} identityKey="uid-b:5" />);

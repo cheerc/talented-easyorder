@@ -1194,6 +1194,21 @@ export function CloudDayVendorsPage({
       : null);
   const showingStale = page.snapshot === null && snapshot !== null;
   const busy = page.recovery !== null || showingStale;
+  // #710 P2: switching between 菜單與開帳 (day) and 供應商 (vendors) re-reads like any other page switch, keeping the viewed date
+  // (the instance is kept so a menu being prepared is not remounted). Only when idle: never beside an unresolved command,
+  // a revoked authorization or a read in progress; the loader itself also keeps the same-identity revoke latch.
+  const previousViewRef = useRef(view);
+  const idleReadDayId = revokedScopeRef.current !== authorizationScopeKey && !page.authorizationRevoked
+    && page.recovery === null && !page.loading && !showingStale
+    ? (page.snapshot?.dayId ?? page.dayIdDraft) || undefined
+    : null;
+  const idleReadDayIdRef = useRef(idleReadDayId);
+  idleReadDayIdRef.current = idleReadDayId;
+  useEffect(() => {
+    if (previousViewRef.current === view) return;
+    previousViewRef.current = view;
+    if (idleReadDayIdRef.current !== null) void loadSnapshot(idleReadDayIdRef.current);
+  }, [view, loadSnapshot]);
   const activeVendors = snapshot?.vendors.filter(vendor => vendor.status === 'active' && !vendor.deleted) ?? [];
   const canMutateDay = snapshot?.day !== null && snapshot?.day !== undefined && snapshot.day.status !== 'closed';
   const canSetOpeningCash = !!snapshot
@@ -1230,14 +1245,6 @@ export function CloudDayVendorsPage({
             日期與供應商資料都從伺服器完整載入。{'\n'}未確認開帳與零元開帳分開顯示。{'\n'}菜單與供應商的變更不會改寫已存的歷史快照。
           </HelpTip>
         </div>
-        <button
-          type="button"
-          className="cloud-day-vendors__secondary"
-          onClick={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
-          disabled={page.loading || !identityKey || page.authorizationRevoked}
-        >
-          {page.loading ? '載入中…' : '重新載入伺服器資料'}
-        </button>
       </header>
       <DataUpdatedNotice
         pageSeq={snapshot?.seq ?? null}

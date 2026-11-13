@@ -1485,14 +1485,6 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         <div className="cloud-students__header-actions">
           <button
             type="button"
-            className="cloud-students__secondary"
-            onClick={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
-            disabled={page.loading || busy || !identityKey || page.authorizationRevoked}
-          >
-            {page.loading ? '載入中…' : '重新載入名單'}
-          </button>
-          <button
-            type="button"
             className="cloud-students__primary"
             onClick={() => openCreate()}
             disabled={busy}

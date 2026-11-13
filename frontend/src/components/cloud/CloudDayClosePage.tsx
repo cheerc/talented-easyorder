@@ -1635,14 +1635,6 @@ export function CloudDayClosePage({
             應有現金由伺服器依營業日統計計算：開帳現金＋收款留存＋櫃台收入－櫃台支出－帳戶退款。
           </HelpTip>
         </h1>
-        <button
-          type="button"
-          className="cloud-day-close__secondary"
-          onClick={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
-          disabled={page.loading || !identityKey || page.authorizationRevoked}
-        >
-          {page.loading ? '載入中…' : '重新載入伺服器資料'}
-        </button>
       </header>
       <DataUpdatedNotice
         pageSeq={snapshot ? snapshot.overview.seq : null}

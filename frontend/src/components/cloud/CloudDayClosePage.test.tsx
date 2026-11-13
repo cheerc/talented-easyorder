@@ -1002,7 +1002,8 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(repository.ensureDay).toHaveBeenCalledTimes(1);
     expect(repository.startBackfill).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getAllByRole('button', { name: '重新載入伺服器資料' })[0]);
+    // The failed step leaves no snapshot and no recovery, so the kept unavailable-section button is the reload entry.
+    fireEvent.click(within(screen.getByRole('region', { name: '雲端資料未載入' })).getByRole('button', { name: '重新載入伺服器資料' }));
     expect(await screen.findByTestId('backfill-plan-panel', undefined, { timeout: 5_000 })).toBeInTheDocument();
     // #707: the panel title leads with the business date, so it shows the weekday (2026-10-14 is a Wednesday).
     expect(screen.getByTestId('backfill-plan-panel')).toHaveTextContent('開始補登 2026-10-14（三） 還沒完成');
