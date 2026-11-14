@@ -28,32 +28,12 @@ export interface LedgerTransaction {
   otherItemName?: string;
 }
 
-import type { StudentSnapshot } from './student';
-import type { MenuSnapshot } from './menu';
 import type { StudentAccount } from './student';
 
 export const CASHIER_SENTINEL = '__cashier__' as const;
 
 export function isStudentTransaction(tx: { studentId: string }): boolean {
   return tx.studentId !== CASHIER_SENTINEL;
-}
-
-export interface CreateLedgerTransactionInput {
-  transactionId: string;
-  businessDate: string;
-  createdAt: string;
-  studentSnapshot: StudentSnapshot;
-  menuSnapshot: MenuSnapshot;
-  type: TransactionType;
-  mealPrice: number;
-  paidAmount: number;
-  amount?: number;
-  previousBalance: number;
-  sourceDevice: LedgerTransaction['sourceDevice'];
-  operatorId?: string;
-  note: string;
-  /** 訂購其他餐點的品項；今日餐點不帶。 */
-  otherItemName?: string;
 }
 
 export function calculateTransactionAmount(mealPrice: number, paidAmount: number): number {
@@ -66,33 +46,6 @@ export function computeTransactionBalanceDelta(tx: Pick<LedgerTransaction, 'type
     return -Math.abs(tx.amount);
   }
   return tx.paidAmount - tx.mealPrice;
-}
-
-export function createLedgerTransaction(input: CreateLedgerTransactionInput): LedgerTransaction {
-  const isRefund = input.type === 'refund';
-  const amount = isRefund ? Math.round(input.amount ?? 0) : calculateTransactionAmount(input.mealPrice, input.paidAmount);
-  const balanceDelta = isRefund ? -amount : amount;
-  const studentId = input.type === 'expense' ? CASHIER_SENTINEL : input.studentSnapshot.studentId;
-  return {
-    transactionId: input.transactionId,
-    businessDate: input.businessDate,
-    createdAt: input.createdAt,
-    studentId,
-    studentNameSnapshot: input.type === 'expense' ? '櫃台' : input.studentSnapshot.studentNameSnapshot,
-    type: input.type,
-    mealPrice: isRefund ? 0 : input.mealPrice,
-    paidAmount: isRefund ? 0 : input.paidAmount,
-    amount,
-    afterBalance: input.type === 'expense' ? 0 : input.previousBalance + balanceDelta,
-    menuNameSnapshot: input.type === 'expense' || isRefund ? '' : input.menuSnapshot.menuNameSnapshot,
-    vendorNameSnapshot: input.type === 'expense' || isRefund ? '' : input.menuSnapshot.vendorNameSnapshot,
-    sourceDevice: input.sourceDevice,
-    operatorId: input.operatorId,
-    syncStatus: 'local',
-    revision: 1,
-    note: input.note,
-    ...(input.otherItemName !== undefined ? { otherItemName: input.otherItemName } : {}),
-  };
 }
 
 export function countActiveOrdersForStudent(

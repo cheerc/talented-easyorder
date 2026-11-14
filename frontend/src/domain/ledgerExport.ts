@@ -1,5 +1,3 @@
-import type { LedgerTransaction, MergedTransaction } from './ledger';
-import { isOtherMealOrder, otherMealName } from './ledger';
 import type { DailySettlement } from './cashClose';
 import type { LedgerTotals, LedgerGroup } from './ledgerReport';
 
@@ -47,43 +45,6 @@ export const SETTLEMENT_CSV_COLUMNS = [
   'reopen_reason',
   'sync_status',
 ] as const;
-
-/**
- * 份數兩欄：今日餐點份數、其他餐點品項（以「、」分隔）。合併模式的列帶有整組的計數；原始模式每筆訂餐一份。
- */
-function mealColumns(t: LedgerTransaction | MergedTransaction): [string, string] {
-  if ('otherMealItems' in t) return [String(t.bentoOrderCount), t.otherMealItems.join('、')];
-  if (t.type !== 'order') return ['0', ''];
-  return isOtherMealOrder(t) ? ['0', otherMealName(t)] : ['1', ''];
-}
-
-export function buildTransactionCsvRows(transactions: LedgerTransaction[]): string[][] {
-  return transactions.map(t => [
-    t.businessDate,
-    t.transactionId,
-    t.createdAt,
-    t.studentId,
-    t.studentNameSnapshot,
-    t.type,
-    String(t.mealPrice),
-    String(t.paidAmount),
-    String(t.amount),
-    String(t.afterBalance),
-    t.menuNameSnapshot,
-    t.vendorNameSnapshot,
-    t.sourceDevice,
-    t.operatorId ?? '',
-    t.syncStatus,
-    String(t.revision),
-    t.note,
-    t.voidedAt ?? '',
-    t.voidedBy ?? '',
-    t.voidReason ?? '',
-    String(t.depositAmount ?? 0),
-    String(t.unpaidAmount ?? 0),
-    ...mealColumns(t),
-  ]);
-}
 
 export function buildSettlementCsvRows(settlements: DailySettlement[]): string[][] {
   return settlements.map(s => [

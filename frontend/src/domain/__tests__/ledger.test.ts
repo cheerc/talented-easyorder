@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateTransactionAmount,
-  createLedgerTransaction,
   countActiveOrdersForStudent,
   recalculateStudentBalances,
   mergeLedgerTransactions,
@@ -10,12 +9,9 @@ import type { LedgerTransaction } from '../ledger';
 import {
   STUDENT_001,
   STUDENT_004,
-  TODAY_MENU_KARAAGE,
   TX_ORDER_001,
   FIXTURE_BUSINESS_DATE,
 } from './fixtures';
-import { createStudentSnapshot } from '../student';
-import { createMenuSnapshot } from '../menu';
 
 describe('calculateTransactionAmount', () => {
   it('order with no cash: amount = -mealPrice', () => {
@@ -32,36 +28,6 @@ describe('calculateTransactionAmount', () => {
 
   it('partial payment: amount = paidAmount - mealPrice', () => {
     expect(calculateTransactionAmount(90, 50)).toBe(-40);
-  });
-});
-
-describe('createLedgerTransaction', () => {
-  it('creates a transaction with snapshots and correct amount', () => {
-    const studentSnapshot = createStudentSnapshot(STUDENT_001);
-    const menuSnapshot = createMenuSnapshot(TODAY_MENU_KARAAGE);
-    const tx = createLedgerTransaction({
-      transactionId: 'tx-test-1',
-      businessDate: FIXTURE_BUSINESS_DATE,
-      createdAt: '2026-05-07T04:00:00Z',
-      studentSnapshot,
-      menuSnapshot,
-      type: 'order',
-      mealPrice: 90,
-      paidAmount: 0,
-      previousBalance: 1250,
-      sourceDevice: 'pc',
-      note: '日式唐揚雞餐點',
-    });
-
-    expect(tx.transactionId).toBe('tx-test-1');
-    expect(tx.studentId).toBe('001');
-    expect(tx.studentNameSnapshot).toBe('王柏翰');
-    expect(tx.menuNameSnapshot).toBe('日式唐揚雞餐點');
-    expect(tx.vendorNameSnapshot).toBe('阿榮便當');
-    expect(tx.amount).toBe(-90);
-    expect(tx.afterBalance).toBe(1160);
-    expect(tx.syncStatus).toBe('local');
-    expect(tx.revision).toBe(1);
   });
 });
 

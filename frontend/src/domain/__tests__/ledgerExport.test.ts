@@ -1,9 +1,7 @@
-import { mergeLedgerTransactions } from '../ledger';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   TRANSACTION_CSV_COLUMNS,
   SETTLEMENT_CSV_COLUMNS,
-  buildTransactionCsvRows,
   buildSettlementCsvRows,
   serializeCsv,
   buildLedgerPrintViewModel,
@@ -47,60 +45,6 @@ describe('CSV column definitions', () => {
 
   it('settlement CSV has exactly 15 columns', () => {
     expect(SETTLEMENT_CSV_COLUMNS).toHaveLength(15);
-  });
-});
-
-describe('buildTransactionCsvRows', () => {
-  it('maps one ledger row to one CSV row', () => {
-    const rows = buildTransactionCsvRows([makeTx()]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveLength(24);
-    expect(rows[0][0]).toBe('2026-05-15');
-    expect(rows[0][1]).toBe('tx-1');
-    expect(rows[0][4]).toBe('王小明');
-  });
-
-  it('defaults depositAmount and unpaidAmount to 0 when missing', () => {
-    const tx = makeTx();
-    delete (tx as Partial<LedgerTransaction>).depositAmount;
-    delete (tx as Partial<LedgerTransaction>).unpaidAmount;
-    const rows = buildTransactionCsvRows([tx]);
-    expect(rows[0][20]).toBe('0');
-    expect(rows[0][21]).toBe('0');
-  });
-
-  it('outputs depositAmount and unpaidAmount when present', () => {
-    const tx = makeTx({ depositAmount: 150, unpaidAmount: 50 });
-    const rows = buildTransactionCsvRows([tx]);
-    expect(rows[0][20]).toBe('150');
-    expect(rows[0][21]).toBe('50');
-  });
-
-  it('handles empty array', () => {
-    const rows = buildTransactionCsvRows([]);
-    expect(rows).toHaveLength(0);
-  });
-});
-
-describe('今日餐點與其他餐點欄位', () => {
-  it('原始模式：今日餐點 1 份；其他餐點列出品項（新資料看 otherItemName，舊資料看備註）；繳費 0', () => {
-    const rows = buildTransactionCsvRows([
-      makeTx(),
-      makeTx({ transactionId: 'o1', otherItemName: '雞腿', note: '雞腿' }),
-      makeTx({ transactionId: 'o2', note: '單筆改價：魚排' }),
-      makeTx({ transactionId: 'p1', type: 'payment', mealPrice: 0, paidAmount: 100 }),
-    ]);
-    expect(rows.map(r => r.slice(22))).toEqual([['1', ''], ['0', '雞腿'], ['0', '魚排'], ['0', '']]);
-  });
-
-  it('合併模式：同一人的今日餐點份數與其他餐點品項合在一列，不沿用第一筆的品項', () => {
-    const merged = mergeLedgerTransactions([
-      makeTx({ transactionId: 'a', otherItemName: '雞腿', createdAt: '2026-05-15T11:00:00.000Z' }),
-      makeTx({ transactionId: 'b', createdAt: '2026-05-15T12:00:00.000Z' }),
-    ]);
-    expect(merged).toHaveLength(1);
-    expect(merged[0].otherItemName).toBeUndefined();
-    expect(buildTransactionCsvRows(merged)[0].slice(22)).toEqual(['1', '雞腿']);
   });
 });
 
