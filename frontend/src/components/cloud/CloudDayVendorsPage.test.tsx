@@ -792,8 +792,12 @@ describe('CloudDayVendorsPage', () => {
     repository.loadSnapshot
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot({ vendors: [vendor('pending-private-id', { name: '待回填供應商' })] }));
+    // The data head is ahead of the snapshot (seq 10), so the notice WOULD show if `hidden={progressActive || busy}` were broken (#728).
+    headMock.current = { seq: 12, lastCommandId: 'cmd-12', datasetId: 'demo-p07', targets: {} };
     renderPage();
     await screen.findByRole('heading', { name: `${withWeekday(today)} 營業日` });
+    // Idle: the setup really renders the notice and its reload control.
+    expect(await screen.findByTestId('data-updated-notice')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
     const createForm = screen.getByRole('form', { name: '新增供應商' });
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'pending-private-id' } });
@@ -801,6 +805,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(within(createForm).getByRole('button', { name: '建立供應商' }));
     await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
+    expect(screen.queryByTestId('data-updated-notice')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
     await act(async () => {
@@ -820,8 +825,13 @@ describe('CloudDayVendorsPage', () => {
     });
     repository.confirmPendingIntent.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectConfirmation = reject; }));
     repository.loadSnapshot.mockResolvedValueOnce(snapshot());
+    // Head ahead of the snapshot (seq 10): the notice shows when idle. While the receipt is checked the page holds no snapshot (pageSeq null), so this
+    // case does not exercise `hidden`; the in-flight case above does (#728).
+    headMock.current = { seq: 12, lastCommandId: 'cmd-12', datasetId: 'demo-p07', targets: {} };
     renderPage();
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    // Idle: the setup really renders the notice.
+    expect(await screen.findByTestId('data-updated-notice')).toBeInTheDocument();
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '15' } });
     await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
@@ -829,6 +839,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     await screen.findByText('正在查詢原命令結果…');
 
+    expect(screen.queryByTestId('data-updated-notice')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     await act(async () => { rejectConfirmation({ code: 'UNAUTHORIZED', message: 'not authorized' }); });
     expect(await screen.findByText('其他人已登入或登入已失效；操作內容已清除。')).toBeInTheDocument();
