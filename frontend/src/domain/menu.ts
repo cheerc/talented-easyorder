@@ -22,13 +22,6 @@ export interface TodayMenu {
   revision: number;
 }
 
-export interface MenuSnapshot {
-  menuNameSnapshot: string;
-  menuPriceSnapshot: number;
-  vendorIdSnapshot: string;
-  vendorNameSnapshot: string;
-}
-
 export interface MenuCatalogItem {
   itemId: string;
   name: string;
@@ -149,15 +142,6 @@ export function resolveMenuVendor(menu: TodayMenu, vendors: Vendor[]): { vendorI
 
 /** 依營業日保存的晚餐設定（key 為 YYYY-MM-DD）。 */
 export type MenusByDate = Record<string, TodayMenu>;
-
-export function createMenuSnapshot(menu: TodayMenu): MenuSnapshot {
-  return {
-    menuNameSnapshot: menu.itemName,
-    menuPriceSnapshot: menu.price,
-    vendorIdSnapshot: menu.vendorId,
-    vendorNameSnapshot: menu.vendorNameSnapshot,
-  };
-}
 
 export function promoteCatalogItemToTodayMenu(
   item: MenuCatalogItem,

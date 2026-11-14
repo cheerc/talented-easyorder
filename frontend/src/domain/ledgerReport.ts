@@ -11,7 +11,7 @@ export interface LedgerDateRange {
 /**
  * M2 F08 報表口徑。畫面上的卡片名稱與這裡的欄位一一對應：
  * - orderCount 份數：訂餐筆數（每筆一份）＝ bentoCount 今日餐點 ＋ otherMealCount 其他餐點。
- *   向供應商叫餐看 bentoCount；「訂購其他餐點」另列（isOtherMealOrder）。
+ *   向供應商叫餐看 bentoCount；「訂購其他餐點」另列。
  * - mealTotal 餐費：訂餐的應收餐費合計。
  * - orderUnpaid 訂餐當下未收：每筆訂餐「餐費 − 當筆收款」不足的部分合計。之後補繳不會扣回，所以不是帳戶欠款。
  * - totalIncome 收現：實際收進的現金＝訂餐當筆收款＋繳費＋櫃台收入。
@@ -31,17 +31,6 @@ export interface LedgerTotals {
   totalRefund?: number;
   netCash: number;
   transactionCount: number;
-}
-
-export interface LedgerGroup {
-  studentId: string;
-  studentNameSnapshot: string;
-  latestCreatedAt: string;
-  mealTotal: number;
-  paidTotal: number;
-  afterBalance: number;
-  recordCount: number;
-  transactions: LedgerTransaction[];
 }
 
 function getMonday(dateStr: string): string {
@@ -90,9 +79,6 @@ export function filterTransactionsByBusinessDate(
 ): LedgerTransaction[] {
   return transactions.filter(tx => tx.businessDate >= range.startDate && tx.businessDate <= range.endDate);
 }
-
-// 其他餐點的判斷放在 ledger.ts（合併列與報表共用）。
-export { OTHER_MEAL_NOTE_PREFIX, isOtherMealOrder, otherMealName, countMeals } from './ledger';
 
 /**
  * F2 帳戶列摘要：依交易「現在」的類型計數。取消訂餐但收款留在帳戶時原單會改成繳費，

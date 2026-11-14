@@ -1,6 +1,5 @@
 import type { StudentAccount } from '../student';
 import type { Vendor, TodayMenu, MenuCatalogItem } from '../menu';
-import type { LedgerTransaction } from '../ledger';
 
 export const FIXTURE_BUSINESS_DATE = '2026-05-07';
 
@@ -59,42 +58,4 @@ export const CATALOG_ITEM_KARAAGE: MenuCatalogItem = {
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   revision: 1,
-};
-
-export const TX_ORDER_001: LedgerTransaction = {
-  transactionId: 'tx-order-001',
-  businessDate: FIXTURE_BUSINESS_DATE,
-  createdAt: '2026-05-07T03:38:14.000Z',
-  studentId: '001',
-  studentNameSnapshot: '王柏翰',
-  type: 'order',
-  mealPrice: 90,
-  paidAmount: 0,
-  amount: -90,
-  afterBalance: 1160,
-  menuNameSnapshot: '日式唐揚雞餐點',
-  vendorNameSnapshot: '阿榮便當',
-  sourceDevice: 'pc',
-  syncStatus: 'local',
-  revision: 1,
-  note: '日式唐揚雞餐點',
-};
-
-export const TX_TOPUP_002: LedgerTransaction = {
-  transactionId: 'tx-topup-002',
-  businessDate: FIXTURE_BUSINESS_DATE,
-  createdAt: '2026-05-07T03:41:10.000Z',
-  studentId: '002',
-  studentNameSnapshot: '陳奕辰',
-  type: 'topup',
-  mealPrice: 0,
-  paidAmount: 500,
-  amount: 500,
-  afterBalance: 580,
-  menuNameSnapshot: '',
-  vendorNameSnapshot: '',
-  sourceDevice: 'pc',
-  syncStatus: 'local',
-  revision: 1,
-  note: '現金儲值',
 };

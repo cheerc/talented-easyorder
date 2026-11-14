@@ -1,5 +1,4 @@
 import type { DailySettlement } from './cashClose';
-import type { LedgerTotals, LedgerGroup } from './ledgerReport';
 
 export const TRANSACTION_CSV_COLUMNS = [
   'business_date',
@@ -93,31 +92,4 @@ export function triggerCsvDownload(filename: string, csvString: string): void {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
-}
-
-export interface LedgerPrintViewModel {
-  businessDate: string;
-  totals: LedgerTotals;
-  groups: LedgerGroup[];
-  dateStatus: string;
-  generatedAt: string;
-  generatedBy: string;
-}
-
-export function buildLedgerPrintViewModel(args: {
-  businessDate: string;
-  totals: LedgerTotals;
-  groups: LedgerGroup[];
-  dateStatus: string;
-  generatedAt: string;
-  generatedBy: string;
-}): LedgerPrintViewModel {
-  return {
-    businessDate: args.businessDate,
-    totals: args.totals,
-    groups: args.groups,
-    dateStatus: args.dateStatus,
-    generatedAt: args.generatedAt,
-    generatedBy: args.generatedBy,
-  };
 }

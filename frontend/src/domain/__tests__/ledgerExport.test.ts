@@ -4,32 +4,9 @@ import {
   SETTLEMENT_CSV_COLUMNS,
   buildSettlementCsvRows,
   serializeCsv,
-  buildLedgerPrintViewModel,
   triggerCsvDownload,
 } from '../ledgerExport';
-import type { LedgerTransaction } from '../ledger';
 import type { DailySettlement } from '../cashClose';
-import type { LedgerGroup, LedgerTotals } from '../ledgerReport';
-
-const makeTx = (overrides: Partial<LedgerTransaction> = {}): LedgerTransaction => ({
-  transactionId: 'tx-1',
-  businessDate: '2026-05-15',
-  createdAt: '2026-05-15T12:00:00.000Z',
-  studentId: '015',
-  studentNameSnapshot: '王小明',
-  type: 'order',
-  mealPrice: 85,
-  paidAmount: 0,
-  amount: -85,
-  afterBalance: 15,
-  menuNameSnapshot: '雞腿飯',
-  vendorNameSnapshot: '餐點王',
-  sourceDevice: 'pc',
-  syncStatus: 'local',
-  revision: 1,
-  note: '',
-  ...overrides,
-});
 
 describe('CSV column definitions', () => {
   it('transaction CSV has exactly 24 columns', () => {
@@ -158,46 +135,5 @@ describe('triggerCsvDownload', () => {
 
     expect(anchorClickCount).toBe(1);
     expect(revokeCalls).toEqual(['blob:test']);
-  });
-});
-
-describe('buildLedgerPrintViewModel', () => {
-  it('includes header, totals, and grouped rows', () => {
-    const totals: LedgerTotals = {
-      orderCount: 1,
-      bentoCount: 1,
-      otherMealCount: 0,
-      totalIncome: 0,
-      totalExpense: 0,
-      totalRefund: 0,
-      netCash: 0,
-      mealTotal: 0,
-      orderUnpaid: 85,
-      transactionCount: 1,
-    };
-    const groups: LedgerGroup[] = [{
-      studentId: '015',
-      studentNameSnapshot: '王小明',
-      latestCreatedAt: '2026-05-15T12:00:00.000Z',
-      mealTotal: 85,
-      paidTotal: 0,
-      afterBalance: 15,
-      recordCount: 1,
-      transactions: [makeTx()],
-    }];
-
-    const vm = buildLedgerPrintViewModel({
-      businessDate: '2026-05-15',
-      totals,
-      groups,
-      dateStatus: 'open',
-      generatedAt: '2026-05-15T18:00:00.000Z',
-      generatedBy: 'op-report',
-    });
-
-    expect(vm.businessDate).toBe('2026-05-15');
-    expect(vm.totals.orderCount).toBe(1);
-    expect(vm.groups).toHaveLength(1);
-    expect(vm.generatedBy).toBe('op-report');
   });
 });

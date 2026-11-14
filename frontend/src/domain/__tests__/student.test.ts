@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createStudentSnapshot,
   filterActiveStudents,
   searchActiveStudents,
   validateStudentImportRows,
@@ -19,16 +18,6 @@ const INACTIVE_STUDENT: StudentAccount = {
   displayName: '已畢業學生',
   status: 'inactive',
 };
-
-describe('createStudentSnapshot', () => {
-  it('captures current display name into snapshot', () => {
-    const snapshot = createStudentSnapshot(STUDENT_001);
-    expect(snapshot).toEqual({
-      studentId: '001',
-      studentNameSnapshot: '王柏翰',
-    });
-  });
-});
 
 describe('filterActiveStudents', () => {
   it('excludes inactive students', () => {

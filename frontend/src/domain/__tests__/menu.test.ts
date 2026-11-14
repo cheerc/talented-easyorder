@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   validateTodayMenu,
   filterActiveVendors,
-  createMenuSnapshot,
   promoteCatalogItemToTodayMenu,
 } from '../menu';
 import type { Vendor, TodayMenu } from '../menu';
@@ -65,27 +64,6 @@ describe('filterActiveVendors', () => {
     const result = filterActiveVendors([VENDOR_ARONG, INACTIVE_VENDOR]);
     expect(result).toHaveLength(1);
     expect(result[0].vendorId).toBe('v1');
-  });
-});
-
-describe('createMenuSnapshot', () => {
-  it('preserves menu and vendor values', () => {
-    const snapshot = createMenuSnapshot(TODAY_MENU_KARAAGE);
-    expect(snapshot).toEqual({
-      menuNameSnapshot: '日式唐揚雞餐點',
-      menuPriceSnapshot: 90,
-      vendorIdSnapshot: 'v1',
-      vendorNameSnapshot: '阿榮便當',
-    });
-  });
-
-  it('snapshot is independent of later edits to source', () => {
-    const menu = { ...TODAY_MENU_KARAAGE };
-    const snapshot = createMenuSnapshot(menu);
-    menu.itemName = '排骨飯';
-    menu.price = 100;
-    expect(snapshot.menuNameSnapshot).toBe('日式唐揚雞餐點');
-    expect(snapshot.menuPriceSnapshot).toBe(90);
   });
 });
 
