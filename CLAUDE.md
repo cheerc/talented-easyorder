@@ -4,7 +4,7 @@
 
 - 先看 `git status --short --branch`、branch 與近期 log；保留所有既有未提交變更，不用 reset／checkout 覆寫。再讀 [正式後端交接](docs/DEVELOPMENT-HANDOFF.md) 的目前接手點，以及本次最新使用者授權。handoff 是後端續作權威；歷史 receipt、舊 setup/deploy 指令都不是新授權。不可自行推進下一 phase。
 - 設計原則：這是簡單的午餐訂餐系統，不是企業系統，取捨時優先用減法（好維護、簡單、低成本）；此原則不凌駕下方「安全與操作邊界」、Rules 授權邊界及 [`REVIEW.md`](REVIEW.md) 的 🔴 項目。
-- 本 repo 同時有 PC POS prototype 與逐步開發中的正式後端；功能完成、部署、使用者營運驗收是不同 gate。PR 必須如實記錄 revision、驗證範圍與未執行項目。
+- 本 repo 只開發雲端正式版；PC POS prototype 已移除（#709，tag `pc-pos-prototype-final`，歷史在 git）。功能完成、部署、使用者營運驗收是不同 gate。部署 target 只有 `firebase-test`、`firebase-production`（不同 Firebase 專案／資料庫）；本機與 CI 測試只用 `demo-easyorder` Emulator。PR 必須如實記錄 revision、驗證範圍與未執行項目。
 
 ## 安全與操作邊界
 

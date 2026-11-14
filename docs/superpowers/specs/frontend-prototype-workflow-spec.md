@@ -1,5 +1,7 @@
 # PC 櫃台前端 prototype workflow spec
 
+> **歷史文件（#709）：** PC POS prototype 已移除（tag `pc-pos-prototype-final`），本 spec 描述的是已移除的 prototype，不再是現行規格。現行契約見[正式後端 spec](2026-10-13-free-production-backend-spec.md)、[frontend/CLAUDE.md](../../../frontend/CLAUDE.md) 與 [FRONTEND-UI-STYLE](../../FRONTEND-UI-STYLE.md)。
+
 狀態：2026-09-29 交接提案，待 project team review 與分批實作／operator 驗收。不是現行功能完成聲明。依據見 [audit](../reviews/2026-09-29-frontend-workflow-audit.md)，排程見 [plan](../plans/2026-09-29-frontend-prototype-refocus.md)。
 
 ## 1. 適用範圍與優先順序

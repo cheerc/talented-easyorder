@@ -1,5 +1,7 @@
 # 前端 prototype 方向修正與交接
 
+> **歷史文件（#709）：** PC POS prototype 已移除，程式只保存在 git tag `pc-pos-prototype-final`（`git show pc-pos-prototype-final`）。本文與以下內容是 2026-09-29 的 prototype 交接，不再維護，也不代表現行功能或授權。現行入口：[DEVELOPMENT-HANDOFF](DEVELOPMENT-HANDOFF.md)、[frontend/CLAUDE.md](../frontend/CLAUDE.md)、[FRONTEND-UI-STYLE](FRONTEND-UI-STYLE.md)。
+
 日期：2026-09-29。檢視基準：`884a996`。本 PR 只修改文件，沒有修復以下缺陷，也沒有完成 operator 驗收。
 
 ## 這次要做的產品

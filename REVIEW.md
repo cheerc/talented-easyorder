@@ -20,7 +20,7 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 2. **Rules／授權邊界放寬**：`firestore.rules` 新增未明列的可寫路徑、允許一般 client 刪除財務／command／結帳文件（spec 明文例外除外）、略過 allowlist／lease／maintenance／schema／counterpart 檢查、`allow list` 未要求 `limit` 或上限超過 spec 規定，或以前端登入 UI 取代 Rules。
 3. **Cloud 寫入繞過 typed command／repository**：UI 直接寫 Firestore、恢復裸寫入、legacy sync、離線排隊、persistent local cache，或把正式帳務／完整個資存進 localStorage／IndexedDB／service worker cache。
 4. **命令冪等與復原錯誤**：結果未知時換新 commandId 重送、可能重複收款、不先查 receipt／server state 就當失敗、無上限自動重試、`runTransaction` 在完成全部讀取前就開始寫入。
-5. **租約與模式隔離**：以本機倒數判定 lease 有效；cloud 缺 Firebase 設定時沒有 fail closed、退回 prototype／local POS；prototype 與 cloud 共用業務資料、storage namespace 或寫入路徑。
+5. **租約與模式隔離**：以本機倒數判定 lease 有效；cloud 缺 Firebase 設定時沒有 fail closed，或新增／恢復本機業務資料模式、local POS、離線帳務。
 6. **備份相容**：新增或改變 command kind、command payload 或投影欄位，卻沒有同步 `frontend/src/firebase/cloudBackup.ts` 的 decoder／replay 與 `frontend/src/firebase/__tests__/cloudBackup.spec.ts` 等相容測試；不相容資料沒有 fail closed。
 7. **讀取一致性**：多頁讀取未以資料序號前後一致驗證、報表／匯出只取第一頁卻當完整資料、查詢未帶 `limit`。
 8. **Secrets、個資與正式環境**：提交 credentials、service account、正式 Firebase config／project id、真實姓名、餘額、紙本或截圖資料；測試、script 或 CI 預設連到 `demo-easyorder` 以外的 project；新增會在 agent／CI 端執行正式 bootstrap 或 production smoke 的路徑；正式 deploy 只能經 `.github/workflows/deploy.yml`（手動觸發、只限 main、GitHub Environment 核准、Workload Identity Federation、action 釘 SHA）或本機 `deploy.sh`，放寬其中任一項或新增其他會自動部署的 workflow 都算。例外（使用者 2026-11-04 授權）：`firebase-test` 的 workflow 觸發與 Environment 核准可由 agent 執行；`firebase-production` 不適用。
@@ -52,7 +52,7 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 
 - **`firestore.rules`、`firestore.indexes.json`**：每份文件寫入與整筆 transaction 的 Rules 存取次數仍符合 spec §6.3 的預算，helper 沒有重複 `get`；預設 deny；每個 command kind 在 `frontend/src/firebase/__tests__/cloudRulesMatrix.spec.ts` 有對應 allow／deny case；新增 index 與 spec §8 的查詢策略一致。
 - **`frontend/src/firebase/**`、`frontend/src/domain/**`**：同 commandId 復原、server confirmation、有限重試、讀取新鮮度與 fail closed；新增 command kind 同步 Rules、備份 decoder／replay 及對應 `*.spec.ts`。
-- **`frontend/src/appMode.ts`、`frontend/src/providers/**`、`frontend/src/auth/**`**：cloud／prototype 判定與隔離、缺設定 fail closed、登出清除訂閱與 store。
+- **`frontend/src/appMode.ts`、`frontend/src/providers/**`、`frontend/src/auth/**`**：Firebase 設定判定與缺設定 fail closed、登出清除訂閱與本機資料。
 - **`frontend/src/components/**`、`frontend/src/store/**`**：UI 不繞過 repository 寫資料；送出中防連按；結果未知時顯示確認中而非允許重新收款。
 - **`.github/workflows/**`、`scripts/**`**：Emulator 一律 `--project demo-easyorder`；改 release 或 e2e gate 時同步更新 `scripts/__tests__/release.test.mjs`、`scripts/__tests__/e2e-ci.test.mjs`；新增 Emulator-required suite 時 CI 有對應步驟並設定 `EASYORDER_REQUIRE_*`。
 - **`deploy.sh`、`firebase.json`、`vercel.json`、Hosting／CSP 設定**：不放寬 CSP；不加入 agent 或 CI 可直接執行的 `firebase-production` 部署路徑；`firebase-test` 的非互動本機入口須寫死只接受該測試 target，不能被參數或環境變數導向其他 project。`deploy-test` 的 target 只能來自 GitHub Environment `firebase-test`，前置條件不得比 `deploy.yml` 寬鬆。`deploy.yml` 與 `deploy-ci` 的變更要同步 `scripts/__tests__/release.test.mjs` 的 guard 與 workflow 測試，且不得帶 `--force`、金鑰或 `secrets.`。
