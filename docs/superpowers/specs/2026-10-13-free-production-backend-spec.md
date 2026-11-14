@@ -50,7 +50,7 @@
 
 ### 3.2 不納入本輪
 
-Android SDK、平板登入、刷臉事件處理／自動入帳、人臉資料／照片上雲、設備心跳、背景 worker、多個 Google 身分同時營運、角色權限、線上付款、電子發票、完整會計總帳、多校區、多餐次、菜單圖片、自動匯入舊 Excel、離線自動補單。保留既有 prototype 訓練模式，正式版不顯示模擬刷臉、清交易或重設成範例。
+Android SDK、平板登入、刷臉事件處理／自動入帳、人臉資料／照片上雲、設備心跳、背景 worker、多個 Google 身分同時營運、角色權限、線上付款、電子發票、完整會計總帳、多校區、多餐次、菜單圖片、自動匯入舊 Excel、離線自動補單。正式版不顯示模擬刷臉、清交易或重設成範例。
 
 ## 4. 身分與全公司單一使用中帳號
 
@@ -107,7 +107,7 @@ commands 的共用查詢欄位一律存在：studentId 在學生／期初／學�
 
 `days.menu` 包含現有 TodayMenu 欄位與 `inheritedFromDate`（或 null）。EnsureDay 初始 totals=0、status=open、openingCash=null；F3 的「複製上週菜單」只在按下按鈕時讀上一個自然週一～五的 `days`（單次 query、`limit 5`），選取後填入表單，以直接設定 command 寫入當日快照（`inheritedFromDate` 為 null）；`inheritedFromDate` 非 null 的繼承路徑與 Rules 驗證保留給舊回執、備份重播與既有資料，UI 不再使用，載入頁面也不再往前掃描較早日期。菜單異動不改已售餐點快照。選單設定與訂單之間 revision 變動時重新確認價格，不能默默採新價。
 
-Cloud store 不持久化整包 Zustand 帳務。伺服器讀回資料才更新 UI；prototype 保留原 persist，命名空間與正式版分離。正式模式缺 Firebase config 必須顯示設定錯誤，不可無聲降級 local-only。舊 firebase repository、schema、裸 setter 及離線 batch 寫路徑須移除或明確只供 prototype，不能同時有兩套正式寫入器。
+Cloud store 不持久化整包 Zustand 帳務。伺服器讀回資料才更新 UI。正式模式缺 Firebase config 必須顯示設定錯誤，不可無聲降級 local-only。舊 firebase repository、schema、裸 setter 及離線 batch 寫路徑須移除，不能同時有兩套正式寫入器（PC POS prototype 已於 #709 移除）。
 
 ## 6. Command 與 Rules：可驗證的帳務邊界
 
@@ -193,7 +193,7 @@ F2／F5 的區間稽核對 `businessDate` 非 null 的命令按營業日歸屬�
 
 ### 7.4 日期生命週期
 
-日期合法性由 Rules 核對 YYYY-MM-DD、年／月／日與 Timestamp 起迄（Asia/Taipei UTC+8）；不得只驗 regex。goLiveDate 之前不能建立業務交易；未來日期可預排菜單，不可收款、訂餐或關帳。F1 用台北今天，不准 prototype 模擬日介入正式版；F2 可對已建立、明確選取／重開的歷史日修正與紙本補登，標記補登理由。
+日期合法性由 Rules 核對 YYYY-MM-DD、年／月／日與 Timestamp 起迄（Asia/Taipei UTC+8）；不得只驗 regex。goLiveDate 之前不能建立業務交易；未來日期可預排菜單，不可收款、訂餐或關帳。F1 用台北今天，不准模擬日介入正式版；F2 可對已建立、明確選取／重開的歷史日修正與紙本補登，標記補登理由。
 
 補登日的備註與今天相同，沒有格式要求；P13d1／P13d2 的紙本號前綴已依 #600（CheerC 2026-11-03）拆除，既有帶前綴的備註當一般文字保留（不改寫、不遷移，照樣可 export／replay）。Rules 於 #600 Phase 1（#612）拆除；訂餐頁、F2、F5 的紙本號欄位、標籤、更正鎖號與交易 CSV 的 `paper_refs` 欄於 Phase 2 移除，備註原文送出與顯示，更正以完整備註為初值。
 
@@ -207,13 +207,13 @@ P13b2 的共用未決命令日誌、結果確認與接手細則見[未決命令�
 
 正式版採 online-only 寫入，全走 runTransaction。移除正式版 persistentLocalCache、offline writeBatch 與 queued settlement；使用記憶體快取，登出清除訂閱與 store。PWA 僅快取靜態 shell，業務回應不進 service worker cache。localStorage／IndexedDB 不保存正式帳務或完整個資草稿；可保存無個資的 pending commandId＋datasetId＋登入 UID 供結果確認。
 
-P13a 實作補充：正式模式初始化時先清除目前 Firebase app／project 的已知 Firestore IndexedDB（default app 為 `firestore/[DEFAULT]/{projectId}/main`），成功前不啟動業務讀取。若另一個舊分頁仍開啟該 DB，初始化維持 fail closed，顯示關閉其他 EasyOrder 分頁後重新載入的指引；Auth SDK 登入狀態與 prototype namespace 不屬於清除範圍。登出或失權時只清 Cloud POS memory 與已知 Cloud crash-draft/localStorage namespace；若刪除受阻或失敗，先遮罩業務畫面並提示清除未完成，不把它記為成功。
+P13a 實作補充：正式模式初始化時先清除目前 Firebase app／project 的已知 Firestore IndexedDB（default app 為 `firestore/[DEFAULT]/{projectId}/main`），成功前不啟動業務讀取。若另一個舊分頁仍開啟該 DB，初始化維持 fail closed，顯示關閉其他 EasyOrder 分頁後重新載入的指引；Auth SDK 登入狀態不屬於清除範圍。登出或失權時只清 Cloud POS memory 與已知 Cloud crash-draft/localStorage namespace；若刪除受阻或失敗，先遮罩業務畫面並提示清除未完成，不把它記為成功。
 
 送出前固定 commandId；送出中防連按。10 秒無確定結果顯示「結果確認中，勿重新收款」，以同 ID 查 receipt／重試；不可產生新 ID 盲送。斷線不接受新業務命令；記憶體草稿標示「尚未入帳」，離開頁面即可能消失。連線恢復先查未決命令，再重新載入 server heads。若租約已轉交，原使用者只留待下次合法取得使用權查詢；下一位操作者可用 commandId 查已入帳紀錄，不能假設失敗再收一次。
 
 quota exceeded／permission denied／schema mismatch／maintenance 均阻止操作並給中文原因。無限自動重試禁止；單次 SDK retries 以有限次數（預設5）為界，額度錯誤停止，人工重試維持 ID。斷線期間改用紙本記唯一流水號、當下日期與收支，恢復後逐筆核對 receipt 再由 F2 補登；沒有背景自動補送。
 
-**P13b1 安全本機診斷補充：**正式 Cloud 與正式模式缺少 Firebase 設定時，都必須採嚴格 allowlist 格式，不得降級到舊自由文字 log；只有明確 `prototype` 模式保留練習 logger 與 `-prototype` namespace。安全紀錄使用獨立本機 namespace，版本化 envelope 僅允許命令失敗欄位（有效 UUID 或 null、已知命令 kind 或 null、固定 `CommandErrorCode`、本機合法 ISO 時間）及系統錯誤欄位（固定 source、固定 system code、本機時間）；不包含 actor、學生／交易資料、payload、reason、fingerprint、URL、message、context 或 stack。讀取與匯出都重新嚴格 decode，拒絕未知欄位及無效 enum/時間，最多保留 100 筆、24 小時；讀取時也必須將原始 bytes 與安全資料的 canonical JSON 比對，duplicate keys、whitespace、escape 變體或其他非 canonical 原文要先移除再重寫安全格式，不能因 parse 後筆數相同而留下原文。無法讀取、移除或重寫時診斷讀取 fail closed，不可當成空白成功或匯出。讀取 `window.localStorage` 屬性與呼叫 storage methods 都要在診斷安全邊界內；拒絕存取不得阻止 optional logger import／App bootstrap 或改變 command outcome，F3 顯示固定儲存錯誤。診斷 identity 不得為記錄額外讀取不可信 getter／proxy，也不得改變原 normalization 的 getter 次序、validation、fingerprint、transaction 或 command-ID 語義；validator 中途讀值只作 partial observation，normalization 成功後最終 identity 必須採用已建立的 canonical DTO 之 commandId/kind（不符合 strict logger 格式者輸出 null），不能保留與 canonical 值不同的中途 identity；normalization 失敗時才保留安全 partial identity 或 null。只清除已知舊非 prototype `easyorder-error-log`，不遷移內容、不掃除其他 origin key；prototype 與無關 sentinel 保留。Cloud logout/access-loss 清理保留安全診斷至 TTL，unsafe 舊 log 仍清除。只有目前合法 lease holder 可在 F3 診斷區查看、匯出固定 JSON 或明確清除；匯出標示本機時間與 local-only 儲存，不建立 `RecordExport`、不寫 Firestore、不改 `dataHead`。最終 command 失敗／拒絕每個呼叫只記一次，SDK callback retry 不重複；成功、query 與 navigation 不記。儲存失敗不改變命令結果。`UNKNOWN_RESULT` 或未知錯誤碼必須提示保留原 command ID 查 receipt，不得宣稱確定失敗或要求重新收款。此補充只涵蓋安全診斷與 F3 匯出，不包含 pending-command recovery、`accessEvents` 或紙本補登。
+**P13b1 安全本機診斷補充：**正式 Cloud 與正式模式缺少 Firebase 設定時，都必須採嚴格 allowlist 格式，不得降級到舊自由文字 log（prototype 練習 logger 與 `-prototype` namespace 已隨 #709 移除）。安全紀錄使用獨立本機 namespace，版本化 envelope 僅允許命令失敗欄位（有效 UUID 或 null、已知命令 kind 或 null、固定 `CommandErrorCode`、本機合法 ISO 時間）及系統錯誤欄位（固定 source、固定 system code、本機時間）；不包含 actor、學生／交易資料、payload、reason、fingerprint、URL、message、context 或 stack。讀取與匯出都重新嚴格 decode，拒絕未知欄位及無效 enum/時間，最多保留 100 筆、24 小時；讀取時也必須將原始 bytes 與安全資料的 canonical JSON 比對，duplicate keys、whitespace、escape 變體或其他非 canonical 原文要先移除再重寫安全格式，不能因 parse 後筆數相同而留下原文。無法讀取、移除或重寫時診斷讀取 fail closed，不可當成空白成功或匯出。讀取 `window.localStorage` 屬性與呼叫 storage methods 都要在診斷安全邊界內；拒絕存取不得阻止 optional logger import／App bootstrap 或改變 command outcome，F3 顯示固定儲存錯誤。診斷 identity 不得為記錄額外讀取不可信 getter／proxy，也不得改變原 normalization 的 getter 次序、validation、fingerprint、transaction 或 command-ID 語義；validator 中途讀值只作 partial observation，normalization 成功後最終 identity 必須採用已建立的 canonical DTO 之 commandId/kind（不符合 strict logger 格式者輸出 null），不能保留與 canonical 值不同的中途 identity；normalization 失敗時才保留安全 partial identity 或 null。只清除已知舊非 prototype `easyorder-error-log`，不遷移內容、不掃除其他 origin key；其他 key 與無關 sentinel 保留。Cloud logout/access-loss 清理保留安全診斷至 TTL，unsafe 舊 log 仍清除。只有目前合法 lease holder 可在 F3 診斷區查看、匯出固定 JSON 或明確清除；匯出標示本機時間與 local-only 儲存，不建立 `RecordExport`、不寫 Firestore、不改 `dataHead`。最終 command 失敗／拒絕每個呼叫只記一次，SDK callback retry 不重複；成功、query 與 navigation 不記。儲存失敗不改變命令結果。`UNKNOWN_RESULT` 或未知錯誤碼必須提示保留原 command ID 查 receipt，不得宣稱確定失敗或要求重新收款。此補充只涵蓋安全診斷與 F3 匯出，不包含 pending-command recovery、`accessEvents` 或紙本補登。
 
 查詢策略：
 
@@ -232,7 +232,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 
 預設正式空庫＋手動學生期初建檔，不自動匯入 prototype 交易。沿用公司現在核對過的結餘，期初日設 goLiveDate；之後新增學生的期初日為建檔日。實際期初／開帳金額必須由操作者輸入確認，不能填4000或範例。
 
-prototype 保留訓練用途。首次切換可下載舊練習快照作本機參考；禁止將整包練習交易直接 restore 到正式庫。需要大量真資料匯入才另立映射／dry-run 需求，不是本輪上線必要依賴。
+prototype 已移除（#709）；舊練習快照可作本機參考，禁止將整包練習交易直接 restore 到正式庫。需要大量真資料匯入才另立映射／dry-run 需求，不是本輪上線必要依賴。
 
 ### 9.2 可重播備份
 
@@ -320,7 +320,7 @@ Hosting 使用 HTTPS、SPA rewrites、CSP／安全header承接 `vercel.json` 的
 | R5、U8 | §4：多白名單、等權、單活躍UID；平板身分另spec |
 | R7 | §5、12：舊iPad雲端入口不啟用，來源字串保留，歷史文件標適用範圍 |
 | U4 | 本plan先完成PC上雲，P18才正式可用 |
-| U9 | §9：空白＋手動期初、prototype訓練保留 |
+| U9 | §9：空白＋手動期初；prototype 已移除（#709） |
 | U10、U13 | §9：人工作增量備份／復原；§3：應用內匯出／列印發起有稽核 |
 | U15 | §7：差額只有原因，不做呆帳／借支分類，不自動平帳 |
 | U1–U3、U5–U6、U12、U14 | §12：Android另spec，不能拿未決裝置項目阻擋PC上線 |

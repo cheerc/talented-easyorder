@@ -24,7 +24,7 @@ Cloud Rules／command 證明需在 `demo-easyorder` Emulator 中實際執行；V
 ## Mode 與程式導航
 
 - `src/appMode.ts` 判定 Firebase 設定並 fail closed；`src/App.tsx` 組裝應用；`src/providers/`、`src/auth/` 管理 Firebase 與登入；`src/domain/` 放領域契約，`src/firebase/` 放 cloud repository，`src/store/` 與 `src/components/` 放狀態及介面。沿用附近的測試與分層，不在 UI 繞過 repository。
-- 只有雲端正式版：沒有 prototype／local 模式。缺 Firebase 設定必須 fail closed（顯示「Firebase 設定錯誤」），不得新增本機業務資料模式或退回 local POS。
+- 只有雲端正式版：沒有 prototype／local 模式。缺 Firebase 設定必須 fail closed（畫面只顯示標題與錯誤訊息，`main` 的 aria-label 為「Firebase 設定錯誤」），不得新增本機業務資料模式或退回 local POS。
 - Cloud 業務寫入經 typed command／repository，Firestore Rules 是授權邊界；不得恢復裸寫、legacy sync、離線排隊或以登入 UI 代替 Rules。租約是否有效以伺服器確認及 Rules 為準，不用本機倒數授權。
 - 未知提交結果時保留原 command ID，先確認 receipt／server state；不可當失敗換 ID 重送或重複收款。讀取須遵循 server confirmation、新鮮度及 fail-closed 契約。詳見 [正式後端 spec](../docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，不要在此複製完整 schema／流程。
 

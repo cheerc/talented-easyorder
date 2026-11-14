@@ -1,5 +1,7 @@
 # Talented EasyOrder 前端 prototype Roadmap
 
+> **歷史文件（#709）：** 本 Roadmap 是 2026-09-29 的 prototype 驗證排程；PC POS prototype 已移除（tag `pc-pos-prototype-final`），不再是現行排程。現行接手點見 [DEVELOPMENT-HANDOFF](../../DEVELOPMENT-HANDOFF.md)。
+
 更新：2026-09-29。當前工作是 PC 晚餐櫃台操作與帳務追溯的前端驗證，尚未完成本人驗收。
 
 ## 當前順序

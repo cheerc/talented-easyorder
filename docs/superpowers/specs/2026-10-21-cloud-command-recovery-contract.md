@@ -88,7 +88,7 @@ P12 匯出／列印與 P14 備份的 minimal recovery 只確認原稽核 receipt
 
 - 真 Emulator commit 已送達、回應丟失，重整後查到原 ID／seq，財務 effect 一次；原 promise 遲到不重複觸發 UI 成功或輸出。
 - 真 tab crash 前已保存三欄 journal；storage denied／quota／讀回錯誤時未呼叫業務 transaction；成功後清理失敗不改 committed 結果。
-- 兩分頁／兩命令不互相覆蓋或刪除；canonical raw 無額外資料；登出保留識別、清除敏感記憶體，prototype/Auth 資料不變。
+- 兩分頁／兩命令不互相覆蓋或刪除；canonical raw 無額外資料；登出保留識別、清除敏感記憶體，Auth 資料不變。
 - B 取得新 epoch 後 A 的 late callbacks 不授權；B 可確認原 ID但不重送原 intent；舊 dataset 不會被新 dataset receipt 誤消除。
 - server null、讀失敗、舊提交仍 in flight 三種情況分別呈現，均不可假稱未入帳／換 ID；人工繼續其他作業後 journal 與未決警示保留。
 - 10 秒慢回覆／quota／permission／maintenance／缺 config／offline 狀態不顯示已同步；跨 reload 的 journal 與診斷各守其 allowlist。

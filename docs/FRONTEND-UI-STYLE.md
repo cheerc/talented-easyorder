@@ -11,8 +11,8 @@
 
 - 基準：MacBook Air 13 吋預設縮放，1440×900 CSS px。正式櫃台 24 吋 1920×1080 PC 等比放大。
 - `frontend/src/styles/cloud-scale.css` 在 `html[data-app-mode="cloud"]` 設 `font-size: clamp(14px, calc(100vw / 90), 21.333px)`（1440→16px、1920→21.33px）。屬性由 `main.tsx` 呼叫 `applyAppModeAttribute`（`appMode.ts`）設定，一律設為 `cloud`。
-- 新寫尺寸（字級、間距、寬高）一律用 rem 或下表 token；不新增 px 字級。雲端 `body` 為 `--t-md`（1440 寬＝17px、1920 寬＝22.67px），與改版前預設（`uiTweaksStore` 預設 `scale='large'` → `body[data-fs="lg"]` 的 `--fs: 17px`）在 1440 相同；`cloud-scale.css` 以 rem 覆蓋 `body[data-fs]` 這個 prototype tweak，雲端不再受它影響（`--fs` 仍給 prototype）。
-- `--r`、`--r-lg` 仍是 px（prototype 共用 `tokens.css`，改 rem 會讓 prototype 縮小）；雲端新元件直接引用即可。
+- 新寫尺寸（字級、間距、寬高）一律用 rem 或下表 token；不新增 px 字級。雲端 `body` 為 `--t-md`（1440 寬＝17px、1920 寬＝22.67px），與改版前預設（`uiTweaksStore` 預設 `scale='large'` → `body[data-fs="lg"]` 的 `--fs: 17px`）在 1440 相同；`cloud-scale.css` 以 rem 覆蓋 `body` 字級，`body[data-fs]` 不再影響雲端 `body`（`--fs` 仍供 `Toast` 等少數元件使用）。
+- `--r`、`--r-lg` 是 px（`tokens.css`）；雲端新元件直接引用即可。
 - 字型：系統字型，不載網路字型、不加 `@font-face`、不改 CSP。`--font-sans`（PingFang TC、Microsoft JhengHei、Noto Sans TC、system-ui）；`--font-mono`（ui-monospace、SF Mono、Consolas）用於金額與編號。
 
 ## Token
@@ -45,7 +45,7 @@
 
 ## 原生 select 基線（#706）
 
-雲端所有原生 `<select>` 共用 `frontend/src/styles/cloud-select.css`（限 `html[data-app-mode="cloud"]`，prototype 不受影響）：`appearance: none`、用 CSS 自畫向下三角箭頭（顏色 `--ink-2`，停用 `--ink-3`，三主題通用，不硬寫色碼）、`padding-right` 預留箭頭空間、`font: inherit`（低 specificity，各頁字級優先）。頁面與 `DateField` 只管自己的高度、字級、左內距與外框；**不要**在頁面 CSS 再處理箭頭或 `padding-right`，背景請用 `background-color`，不要用 `background` 簡寫（會清掉箭頭）。守門：`cloudPagesCss.test.ts` 的「#706 雲端 select 共用基線」。
+雲端所有原生 `<select>` 共用 `frontend/src/styles/cloud-select.css`（限 `html[data-app-mode="cloud"]`）：`appearance: none`、用 CSS 自畫向下三角箭頭（顏色 `--ink-2`，停用 `--ink-3`，三主題通用，不硬寫色碼）、`padding-right` 預留箭頭空間、`font: inherit`（低 specificity，各頁字級優先）。頁面與 `DateField` 只管自己的高度、字級、左內距與外框；**不要**在頁面 CSS 再處理箭頭或 `padding-right`，背景請用 `background-color`，不要用 `background` 簡寫（會清掉箭頭）。守門：`cloudPagesCss.test.ts` 的「#706 雲端 select 共用基線」。
 
 ## HelpTip 與 Callout 的分類（依語意，不依現有 class）
 
