@@ -33,12 +33,6 @@
   letter-spacing: -0.01em;
 }
 
-.brand-sub {
-  font-size: 11px;
-  color: var(--ink-3);
-  font-family: 'JetBrains Mono', monospace;
-}
-
 .tabs {
   display: flex;
   gap: 4px;
@@ -107,14 +101,6 @@
   gap: 14px;
 }
 
-.status-pill {
-  font-size: 12px;
-  color: var(--ink-3);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
 .sync {
   display: flex;
   align-items: center;
@@ -122,48 +108,6 @@
   padding: 6px 10px;
   border-radius: 8px;
   background: var(--line-2);
-}
-
-.sync .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.sync-off .dot {
-  background: var(--warn);
-}
-
-.sync-local .dot {
-  background: var(--ink-3);
-}
-
-.dot-pulse {
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    opacity: 1
-  }
-
-  50% {
-    opacity: .3
-  }
-}
-
-.sync-label {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.sync-meta {
-  font-size: 10px;
-  color: var(--ink-3);
-  font-family: 'JetBrains Mono', monospace;
 }
 
 .counter {
@@ -176,74 +120,6 @@
   gap: 2px;
   min-width: 160px;
 }
-
-.counter-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.counter-name {
-  color: var(--ink-3);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
-  text-align: left;
-}
-
-.counter-val {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  flex-shrink: 0;
-  min-width: 16px;
-  text-align: right;
-}
-
-.counter-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.counter-lbl {
-  font-size: 10px;
-  color: var(--ink-3);
-  margin-top: 2px;
-  letter-spacing: 0.04em;
-}
-
-
-/* 刷臉平板在線／離線（只有登記過平板才顯示；不放刷臉統計數字） */
-.face-device {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--line-2);
-  font-size: 12px;
-  color: var(--ink-2);
-  white-space: nowrap;
-  cursor: help;
-}
-
-.face-device .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.face-device-off { color: var(--warn); }
-.face-device-off .dot { background: var(--warn); }
 
 /* 共用外殼；狀態和資料均由各模式提供。 */
 .app-shell .tab-on, .app-shell .tab-on:hover { background: #29251f; color: #fff; }
@@ -303,15 +179,3 @@
 .auth-gate button { padding: 9px 14px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 @media (max-width: 1050px) { .cloud-app .app-shell { padding-inline: 12px; } .cloud-app .tab { padding-inline: 8px; } }
 
-.topbar-date {
-  background: transparent;
-  border: none;
-  color: inherit;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.topbar-date:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
