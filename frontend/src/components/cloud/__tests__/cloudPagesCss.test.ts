@@ -237,7 +237,7 @@ describe('#652 雲端備份頁字級等比縮放 CSS 契約', () => {
 });
 
 // #667：雲端外殼（topbar.css 與 App 內的原生控制項）字級在 cloud-scale.css 覆寫。
-// topbar.css 與 prototype 共用，px 值保留給 prototype；雲端覆寫一律限定在 html[data-app-mode="cloud"] 之下，
+// topbar.css 的 px 字級保留不改；雲端覆寫一律限定在 html[data-app-mode="cloud"] 之下，
 // 並用 token／em／inherit，讓 1920 依 1440 等比放大（約 4/3）。
 const CLOUD_SHELL_SELECTORS = [
   '.brand-name',
@@ -275,7 +275,7 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
     expect(cloudScaleRules().filter(item => item.selectors.includes(full))).toEqual([]);
   });
 
-  it('topbar.css 的 px 字級保留給 prototype（雲端覆寫不改 topbar.css）', () => {
+  it('topbar.css 的 px 字級保留不改（雲端覆寫不改 topbar.css）', () => {
     const topbar = readFileSync(resolve(STYLES_DIR, 'topbar.css'), 'utf8');
     expect(ruleBody(topbar, '.tab')).toContain('font-size: 14px');
     expect(ruleBody(topbar, '.brand-name')).toContain('font-size: 15px');
