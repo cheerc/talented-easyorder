@@ -412,7 +412,7 @@ function standaloneMergedRow(transaction: CloudReportTransaction): CloudMergedTr
 }
 
 /**
- * Cloud variant of `mergeLedgerTransactions`: input is already in validated Firestore order, so grouping
+ * Merge transactions per business day and student: input is already in validated Firestore order, so grouping
  * never sorts ISO timestamps or document IDs locally. Orders combine with same-day payments, payment-only
  * rows remain separate, refunds and cashier rows stay independent, and voided rows remain visible as audit rows.
  */

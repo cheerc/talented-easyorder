@@ -100,11 +100,6 @@ export interface OpeningBalance {
   createdAt: string;
 }
 
-export interface StudentSnapshot {
-  studentId: string;
-  studentNameSnapshot: string;
-}
-
 export interface StudentImportRow {
   studentId: string;
   displayName: string;
@@ -120,13 +115,6 @@ export interface ImportFieldError {
 export interface StudentImportResult {
   valid: StudentImportRow[];
   errors: ImportFieldError[];
-}
-
-export function createStudentSnapshot(student: StudentAccount): StudentSnapshot {
-  return {
-    studentId: student.studentId,
-    studentNameSnapshot: student.displayName,
-  };
 }
 
 export function filterActiveStudents(students: StudentAccount[]): StudentAccount[] {
