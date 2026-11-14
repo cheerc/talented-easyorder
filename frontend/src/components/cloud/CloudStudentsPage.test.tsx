@@ -553,8 +553,12 @@ describe('CloudStudentsPage', () => {
       resolveCommand = resolve;
     }));
     repository.list.mockResolvedValueOnce(snapshot());
+    // Head ahead of the list (seq 0): the notice would show if `hidden={progressActive || busy}` were broken (#728).
+    headMock.current = { seq: 5, lastCommandId: 'cmd-5', datasetId: 'demo-dataset', targets: {} };
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
+    // Idle: the setup really renders the notice.
+    expect(await screen.findByTestId('data-updated-notice')).toBeInTheDocument();
     openCreateForm();
     fireEvent.change(screen.getByLabelText('學員編號'), { target: { value: '077' } });
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '敏感姓名' } });
@@ -567,11 +571,13 @@ describe('CloudStudentsPage', () => {
     // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
     await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
     // The standing header button is gone; the notice is hidden while a command is in flight, so no reload control is reachable.
+    expect(screen.queryByTestId('data-updated-notice')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     await act(async () => resolveCommand({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
     expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
     // Unknown result: only the read-only receipt query is offered, never a list reload.
     expect(screen.getByRole('button', { name: '查詢原命令結果' })).toBeInTheDocument();
+    expect(screen.queryByTestId('data-updated-notice')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
     expect(repository.list).toHaveBeenCalledTimes(1);
   });
@@ -610,8 +616,13 @@ describe('CloudStudentsPage', () => {
     repository.confirmPendingIntent.mockReturnValueOnce(new Promise((_, reject) => {
       rejectReceiptRead = reject;
     }));
+    // Head ahead of the list (seq 0): the notice shows when idle. While the receipt is queried the page holds no list (pageSeq null), so this
+    // case does not exercise `hidden`; the in-flight case above does (#728).
+    headMock.current = { seq: 5, lastCommandId: 'cmd-5', datasetId: 'demo-dataset', targets: {} };
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
+    // Idle: the setup really renders the notice.
+    expect(await screen.findByTestId('data-updated-notice')).toBeInTheDocument();
     openCreateForm();
     fillCreateForm({ id: '088', name: '另一敏感姓名', amount: '0', mode: '沿用既有核對結餘' });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
@@ -619,6 +630,7 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     await waitFor(() => expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1));
     // While the receipt query runs no list reload control is reachable (header button removed, notice hidden, panel has none).
+    expect(screen.queryByTestId('data-updated-notice')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /重新載入|重新讀取/ })).not.toBeInTheDocument();
 
     await act(async () => rejectReceiptRead({ code: 'UNAUTHORIZED', message: 'token revoked' }));
