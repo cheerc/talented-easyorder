@@ -147,38 +147,8 @@ export function resolveMenuVendor(menu: TodayMenu, vendors: Vendor[]): { vendorI
   return { vendorId: '', unavailableName: byId?.name ?? (menu.vendorNameSnapshot || null) };
 }
 
-/** M0：空白資料集尚未設定今日晚餐時不可訂餐。 */
-export function isMenuReady(menu: TodayMenu): boolean {
-  return menu.itemName.trim() !== '' && Number.isSafeInteger(menu.price) && menu.price > 0;
-}
-
 /** 依營業日保存的晚餐設定（key 為 YYYY-MM-DD）。 */
 export type MenusByDate = Record<string, TodayMenu>;
-
-export type ResolvedMenu =
-  | { source: 'own'; menu: TodayMenu }
-  | { source: 'inherited'; menu: TodayMenu; fromDate: string }
-  | { source: 'legacy'; menu: TodayMenu }
-  | { source: 'none'; menu: TodayMenu };
-
-/**
- * M0 日期 key 菜單：該營業日有自己的設定就用它；沒有就沿用最近一個較早日期的設定；
- * 還沒有任何日期設定時用舊版單一 todayMenu；已有日期設定但都比查詢日晚，則視為這天未設定。
- * 回傳菜單的 businessDate 一律是查詢的營業日。
- */
-export function resolveMenuForDate(menusByDate: MenusByDate, legacyMenu: TodayMenu, date: string): ResolvedMenu {
-  const own = menusByDate[date];
-  if (own) return { source: 'own', menu: own };
-  let fromDate: string | null = null;
-  for (const key of Object.keys(menusByDate)) {
-    if (key < date && (fromDate === null || key > fromDate)) fromDate = key;
-  }
-  if (fromDate !== null) return { source: 'inherited', menu: { ...menusByDate[fromDate], businessDate: date }, fromDate };
-  if (Object.keys(menusByDate).length > 0) {
-    return { source: 'none', menu: { businessDate: date, itemName: '', price: 0, vendorId: '', vendorNameSnapshot: '', updatedAt: '', revision: 1 } };
-  }
-  return { source: 'legacy', menu: legacyMenu.businessDate === date ? legacyMenu : { ...legacyMenu, businessDate: date } };
-}
 
 export function createMenuSnapshot(menu: TodayMenu): MenuSnapshot {
   return {

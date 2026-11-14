@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { rebalanceAccounts, recalculateStudentBalances } from '../ledger';
-import { groupLedgerRowsByStudent } from '../ledgerReport';
 import type { LedgerTransaction } from '../ledger';
 import type { StudentAccount } from '../student';
 
@@ -44,21 +43,6 @@ describe('rebalanceAccounts', () => {
     expect(r.transactions.find(t => t.transactionId === 'back')!.afterBalance).toBe(250);
     expect(r.transactions.find(t => t.transactionId === 'later')!.afterBalance).toBe(160);
     expect(r.students[0].currentBalance).toBe(160);
-  });
-
-  it('補登前一天後，F2 分組列的餘額＝目前餘額，明細依發生先後排（審查 #450）', () => {
-    const students = [student('001', 110, 200)];
-    const later = tx('later', '001', '2026-06-02', '2026-06-02T09:00:00Z', 90, 0, 110);
-    const backdated = tx('back', '001', '2026-06-01', '2026-06-02T12:00:00Z', 0, 50);
-    const r = rebalanceAccounts(students, [later], [backdated, later], ['001']);
-    // store 陣列（新的在前）與畫面清單（舊的在前）兩種傳法結果相同
-    for (const [list, order] of [[r.transactions, 'newest-first'], [[...r.transactions].reverse(), 'oldest-first']] as const) {
-      const [g] = groupLedgerRowsByStudent([...list], order);
-      expect(g.afterBalance).toBe(160);
-      expect(g.transactions.map(t => [t.transactionId, t.afterBalance])).toEqual([['back', 250], ['later', 160]]);
-      // 列的時間仍是最近一次登錄
-      expect(g.latestCreatedAt).toBe('2026-06-02T12:00:00Z');
-    }
   });
 
   it('同一毫秒的兩筆：重算與快照還原的重算給出相同的逐筆結餘', () => {

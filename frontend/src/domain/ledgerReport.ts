@@ -1,5 +1,4 @@
 import type { LedgerTransaction } from './ledger';
-import { countMeals, isStudentTransaction, sortLedgerChronologically } from './ledger';
 
 export type LedgerDateRangeKind = 'today' | 'week' | 'month' | 'custom';
 
@@ -95,100 +94,6 @@ export function filterTransactionsByBusinessDate(
 // 其他餐點的判斷放在 ledger.ts（合併列與報表共用）。
 export { OTHER_MEAL_NOTE_PREFIX, isOtherMealOrder, otherMealName, countMeals } from './ledger';
 
-export function calculateLedgerTotals(transactions: LedgerTransaction[]): LedgerTotals {
-  let orderCount = 0;
-  let mealTotal = 0;
-  let orderUnpaid = 0;
-  let totalIncome = 0;
-  let totalExpense = 0;
-  let totalRefund = 0;
-
-  for (const tx of transactions) {
-    const roundedMealPrice = Math.round(tx.mealPrice);
-    const roundedPaidAmount = Math.round(tx.paidAmount);
-    if (tx.type === 'order') {
-      orderCount++;
-      mealTotal += roundedMealPrice;
-      totalIncome += roundedPaidAmount;
-      orderUnpaid += Math.max(0, roundedMealPrice - roundedPaidAmount);
-    } else if (tx.type === 'payment') {
-      totalIncome += roundedPaidAmount;
-    } else if (tx.type === 'expense') {
-      if (roundedPaidAmount > 0) {
-        totalIncome += roundedPaidAmount;
-      }
-      if (roundedMealPrice > 0) {
-        totalExpense += roundedMealPrice;
-      }
-    } else if (tx.type === 'refund') {
-      totalRefund += Math.round(Math.max(0, tx.amount));
-    }
-  }
-
-  const meals = countMeals(transactions);
-  return {
-    orderCount,
-    bentoCount: meals.bento,
-    otherMealCount: meals.other,
-    mealTotal,
-    orderUnpaid,
-    totalIncome,
-    totalExpense,
-    totalRefund,
-    netCash: totalIncome - totalExpense - totalRefund,
-    transactionCount: transactions.length,
-  };
-}
-
-/**
- * 依帳戶分組。每組的交易依 sortLedgerChronologically 由舊到新排，afterBalance 取「最後發生」那筆，
- * 補登前一天的交易後仍等於帳戶目前餘額（M2 F03）。inputOrder 說明傳入陣列方向（預設舊的在前，同 F1 畫面清單）；
- * 直接傳 store 交易陣列時請給 'newest-first'。
- */
-export function groupLedgerRowsByStudent(
-  transactions: LedgerTransaction[],
-  inputOrder: 'newest-first' | 'oldest-first' = 'oldest-first',
-): LedgerGroup[] {
-  const map = new Map<string, LedgerTransaction[]>();
-  for (const tx of transactions) {
-    if (!isStudentTransaction(tx)) continue;
-    const key = tx.studentId;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(tx);
-  }
-
-  const groups: LedgerGroup[] = [];
-  for (const [studentId, txs] of map) {
-    const sorted = sortLedgerChronologically(txs, inputOrder);
-
-    // 分組的排列仍以最近一次登錄的時間為準（補登的那筆也算最近操作）。
-    const latestCreatedAt = txs.reduce((max, t) => (t.createdAt > max ? t.createdAt : max), '');
-    const lastTx = sorted[sorted.length - 1];
-    const studentNameSnapshot = lastTx?.studentNameSnapshot ?? '';
-
-    let mealTotal = 0;
-    let paidTotal = 0;
-    for (const tx of sorted) {
-      if (tx.type === 'order') mealTotal += Math.round(Math.max(0, tx.mealPrice));
-      paidTotal += Math.round(Math.max(0, tx.paidAmount));
-    }
-
-    groups.push({
-      studentId,
-      studentNameSnapshot,
-      latestCreatedAt,
-      mealTotal,
-      paidTotal,
-      afterBalance: lastTx?.afterBalance ?? 0,
-      recordCount: sorted.length,
-      transactions: sorted,
-    });
-  }
-
-  groups.sort((a, b) => b.latestCreatedAt.localeCompare(a.latestCreatedAt));
-
-  return groups;
-}
 /**
  * F2 帳戶列摘要：依交易「現在」的類型計數。取消訂餐但收款留在帳戶時原單會改成繳費，
  * 要算成繳費而不是訂餐（M4）。兩種都沒有時只寫筆數。
