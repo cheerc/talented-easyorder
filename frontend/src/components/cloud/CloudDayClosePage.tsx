@@ -1982,19 +1982,24 @@ export function CloudDayClosePage({
                     <form className="cloud-day-close__form" aria-label={`${snapshot.dayId} 關帳`} onSubmit={submitClose}>
                       {backfillClose && alignLookup?.status === 'ready' && (
                         <div className="cloud-day-close__notice" data-testid="backfill-align">
-                          <p data-testid="backfill-align-target">
-                            {alignNext
-                              ? `須等於 ${alignNext.dayId} 的開帳現金 ${formatMoney(alignNext.openingCash)}`
-                              : `${snapshot.dayId} 之後沒有已開帳的日子，不需對齊其他日子；實點只要等於應有現金。`}
-                          </p>
-                          <p>
-                            目前應有現金 {formatMoney(day.expectedCash!)}
-                            {alignNext && `，與對齊金額${alignGap === 0 ? '相符' : `差 ${formatMoney(Math.abs(alignGap ?? 0))}（${(alignGap ?? 0) < 0 ? '少' : '多'}）`}`}。
-                          </p>
-                          {alignGap !== null && alignGap !== 0 && (
-                            <p role="alert" data-testid="backfill-align-gap">
-                              差 {formatMoney(Math.abs(alignGap))}，不能關帳。請回到訂餐頁的補登模式，補登 {snapshot.dayId} 缺的交易，或補記收支（含呆帳）後再回來。
-                            </p>
+                          {alignNext && alignGap !== null && alignGap !== 0 ? (
+                            <Callout variant="warn" role="alert">
+                              <div data-testid="backfill-align-gap">
+                                <p>{alignNext.dayId} 已經開帳，開帳現金是 {formatMoney(alignNext.openingCash)}。</p>
+                                <p>{snapshot.dayId} 的應有現金是 {formatMoney(day.expectedCash!)}，{alignGap > 0 ? '多了' : '少了'} {formatMoney(Math.abs(alignGap))}，所以還不能關帳。修改實點現金無法解決這個差額。</p>
+                                <p>請查 {snapshot.dayId} 收店後到 {alignNext.dayId} 開店前的現金去向，例如{alignGap > 0 ? '漏記的支出、存銀行、呆帳' : '漏記的收款、收入'}。</p>
+                                <p>查到後按上方「到訂餐頁補登 {snapshot.dayId}」補記，再回來關帳。</p>
+                              </div>
+                            </Callout>
+                          ) : (
+                            <>
+                              <p data-testid="backfill-align-target">
+                                {alignNext
+                                  ? `須等於 ${alignNext.dayId} 的開帳現金 ${formatMoney(alignNext.openingCash)}`
+                                  : `${snapshot.dayId} 之後沒有已開帳的日子，不需要對齊其他日子；實點現金等於應有現金就可以關帳。`}
+                              </p>
+                              <p>目前應有現金 {formatMoney(day.expectedCash!)}{alignNext && '，與對齊金額相符'}。</p>
+                            </>
                           )}
                         </div>
                       )}
@@ -2013,11 +2018,11 @@ export function CloudDayClosePage({
                           inputMode="numeric"
                           value={countedText}
                           onChange={event => updatePage(previous => ({ ...previous, countedText: event.target.value.trim(), actionError: '' }))}
-                          disabled={busy}
+                          disabled={busy || (backfillClose && alignGap !== null && alignGap !== 0)}
                           required
                         />
                       </label>
-                      {difference !== null && (
+                      {difference !== null && !(backfillClose && alignGap !== null && alignGap !== 0) && (
                         <p
                           className={`cloud-day-close__difference cloud-day-close__difference--${difference === 0 ? 'zero' : 'nonzero'}`}
                           role="status"

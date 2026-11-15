@@ -1239,14 +1239,33 @@ describe('CloudDayClosePage: aligned close of a backfilled day (contract §14)',
     const onOpenOrders = vi.fn();
     renderAt(gap, { onOpenOrders });
     const gapNote = await screen.findByTestId('backfill-align-gap');
-    expect(gapNote).toHaveTextContent('差 NT$ 50，不能關帳');
-    expect(gapNote).toHaveTextContent('回到訂餐頁的補登模式');
+    expect(gapNote).toHaveTextContent('2026-10-16 已經開帳，開帳現金是 NT$ 950');
+    expect(gapNote).toHaveTextContent('2026-10-14 的應有現金是 NT$ 1,000，多了 NT$ 50，所以還不能關帳');
+    expect(gapNote).toHaveTextContent('2026-10-14 收店後到 2026-10-16 開店前的現金去向');
+    expect(gapNote).toHaveTextContent('漏記的支出、存銀行、呆帳');
+    expect(gapNote).toHaveTextContent('按上方「到訂餐頁補登 2026-10-14」');
+    expect(gapNote).not.toHaveTextContent('回到訂餐頁的補登模式');
     expect(screen.getByRole('button', { name: '確認關帳' })).toBeDisabled();
     // The one entry sits at the top of the close section, not inside the difference note (#689).
     expect(within(gapNote).queryByRole('button', { name: /到訂餐頁補登/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('backfill-align-orders'));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
     expect(repository.closeDay).not.toHaveBeenCalled();
+  });
+
+  it('explains a shortage and prevents the count field from suggesting the gap is resolved', async () => {
+    repository.read.mockResolvedValue(gapDay(-100));
+    renderAt(gap, { onOpenOrders: vi.fn() });
+    const gapNote = await screen.findByTestId('backfill-align-gap');
+    const form = screen.getByRole('form', { name: `${gap} 關帳` });
+    const count = within(form).getByRole('textbox', { name: /實點現金/ });
+    fireEvent.change(count, { target: { value: '900' } });
+    expect(form).not.toHaveTextContent('無差額');
+    expect(count).toBeDisabled();
+    expect(gapNote).toHaveTextContent('2026-10-14 的應有現金是 NT$ 900，少了 NT$ 50');
+    expect(gapNote).toHaveTextContent('漏記的收款、收入');
+    expect(gapNote).not.toHaveTextContent('漏記的支出');
+    expect(within(form).getByRole('button', { name: '確認關帳' })).toBeDisabled();
   });
 
   describe('layout of a backfilling day (#689 P5)', () => {
@@ -1268,7 +1287,7 @@ describe('CloudDayClosePage: aligned close of a backfilled day (contract §14)',
     it('offers exactly one 到訂餐頁補登 button, at the top of the close section, when the cash gap is not zero', async () => {
       repository.read.mockResolvedValue(gapDay(0));
       renderAt(gap, { onOpenOrders: vi.fn() });
-      expect(await screen.findByTestId('backfill-align-gap')).toHaveTextContent('差 NT$ 50，不能關帳');
+      expect(await screen.findByTestId('backfill-align-gap')).toHaveTextContent('多了 NT$ 50，所以還不能關帳');
       const buttons = screen.getAllByRole('button', { name: /到訂餐頁補登/ });
       expect(buttons).toHaveLength(1);
       expect(buttons[0]).toHaveAttribute('data-testid', 'backfill-align-orders');
