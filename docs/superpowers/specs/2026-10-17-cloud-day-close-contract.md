@@ -120,6 +120,7 @@ CheerC（2026-10-17）：開帳現金應等於上一個已關帳日的實點現�
 - 只從伺服器讀：dataHead → 租約日期 → `days` 依 document ID 升冪、範圍 `goLiveDate`..今天，**每頁 200 筆、以 `startAfter` 分頁讀完**（P11c2a 取代 P11c1 的 400 份硬上限）→ 每個已關帳日的 `days/{id}/settlements/{lastSettlementRevision}` → **每一頁之後都再讀一次 dataHead**。`seq` 或 `datasetId` 在讀取期間變動回 `STALE_SNAPSHOT`。
 - **讀取次數約等於營業日數**（每份營業日文件 1 次讀取，加上每個已關帳日 1 次日結版本讀取，版本在同一個 Firestore 實例內快取）；這只發生在異常頁與導覽列計數，開帳表單與寫入器不做完整掃描（見下一條）。完整掃描的失敗上限是 20,000 份營業日文件（約 55 年），超過回 `INCOMPLETE_SNAPSHOT`，不截斷。已關帳日缺最新版本回 `INCOMPLETE_SNAPSHOT`；最新版本不是關帳版本、沒有日結版本或 schema 不符回 `UNSUPPORTED_SCHEMA`。
 - **上一個已關帳日的查找**（`findPreviousClosed(dayId)`，開帳表單與 `SetOpeningCash` 寫入器共用）：從 `dayId` 往回，每次讀 `[dayId−31 天, dayId)` 的營業日（升冪、由後往前找第一個 `closed`），找不到再往前一段，直到上線日；每一段之後都比對 dataHead。讀取量只取決於「離上一個已關帳日多遠」，與歷史總長度無關，所以營業日超過 400 份後仍能設定開帳現金。表單的「可送出」條件只依賴這個查找，異常掃描失敗（導覽列顯示「?」）不會擋住開帳。
+- `findOpeningContext(dayId)` 與 `findPreviousClosed` 共用同一個往回查找，讀取量相同；另回傳 P 的營業日／日結版本、計入目前版本的補記 ID（排序）、中間缺日數與未關帳日清單，供開帳表單判斷補記選項與防止使用過期資料（#734；畫面入口於後續階段實作）。
 - 日結版本不可改，讀取器在記憶體以 `(datasetId, dayId, revision)` 快取，省 Spark 讀取額度；快取只活在該讀取器實例內。
 - 沒有新增 index（只用 document ID 範圍與排序）。
 - 回傳 `{ today, goLiveDate, anomalies, closedDays, seq }`。
