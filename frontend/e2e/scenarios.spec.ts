@@ -303,9 +303,11 @@ test.describe('具名業務情境 fixtures', () => {
 
         await mainNav(page, '今日帳').click();
         const close = page.getByRole('main', { name: '雲端日結' });
+        // 等今天的日結載入完成再改日期；載入中改的日期會被載入結果蓋回今天。
+        await expect(close.getByRole('heading', { name: `${withWeekday(scenario.today)} 日結` })).toBeVisible({ timeout: 15_000 });
         await close.getByLabel('營業日', { exact: true }).fill(scenario.previousDay);
         await close.getByLabel('營業日', { exact: true }).press('Enter');
-        await expect(close.getByRole('heading', { name: `${withWeekday(scenario.previousDay)} 日結` })).toBeVisible();
+        await expect(close.getByRole('heading', { name: `${withWeekday(scenario.previousDay)} 日結` })).toBeVisible({ timeout: 15_000 });
         await expect(close.getByRole('heading', { name: '關帳後補記歷史' })).toBeVisible();
         await expect(close.getByText(REASON)).toBeVisible();
       } finally {
