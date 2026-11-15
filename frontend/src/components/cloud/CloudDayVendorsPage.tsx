@@ -13,6 +13,7 @@ import {
   type SetDayMenuInput,
   type SetOpeningCashInput,
 } from '../../firebase/cloudDayVendorRepository';
+import type { CloudOpeningContextLookup, RecordCloudPostCloseEntryInput } from '../../firebase/cloudDayCloseRepository';
 import {
   CloudDayMenuForm,
   CloudDayOpeningCashForm,
@@ -20,7 +21,9 @@ import {
   type CloudDayMenuDraft,
   type CloudDayVendorDraft,
 } from './CloudDayVendorForms';
-import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import { openingDifference } from '../../domain/ledgerAnomalies';
+import { openingPostCloseOffer, sameOpeningContext, type OpeningPostCloseOffer } from '../../domain/openingPostClose';
+import type { PostCloseDirection } from '../../domain/postCloseEntries';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { Callout } from '../ui/Callout';
 import { CommandProgress } from '../ui/CommandProgress';
@@ -38,7 +41,7 @@ import { formatBusinessDate } from '../../utils/businessDate';
 
 type PreviousClosedLookupView =
   | { status: 'idle' }
-  | { status: 'ready'; dayId: string; previous: PreviousClosedDay | null }
+  | { status: 'ready'; dayId: string; context: CloudOpeningContextLookup }
   | { status: 'error'; dayId: string; message: string };
 
 export interface CloudDayVendorsPageProps {
@@ -62,7 +65,29 @@ type PreparedCommand =
   | ({ kind: 'save-vendor'; commandId: string; viewDayId: string } & Omit<SaveVendorInput, 'commandId' | 'leaseEpoch'>)
   | ({ kind: 'remove-vendor'; commandId: string; viewDayId: string } & Omit<RemoveVendorInput, 'commandId' | 'leaseEpoch'>)
   | ({ kind: 'set-day-menu'; commandId: string } & Omit<SetDayMenuInput, 'commandId' | 'leaseEpoch'>)
-  | ({ kind: 'set-opening-cash'; commandId: string } & Omit<SetOpeningCashInput, 'commandId' | 'leaseEpoch'>);
+  | ({ kind: 'set-opening-cash'; commandId: string } & Omit<SetOpeningCashInput, 'commandId' | 'leaseEpoch'>)
+  | ({ kind: 'record-post-close-entry'; commandId: string; viewDayId: string } & Omit<RecordCloudPostCloseEntryInput, 'commandId' | 'leaseEpoch'>);
+
+/**
+ * 開帳同時補記差額（#734）的兩步串接狀態。獨立於表單草稿：命令明確失敗會清掉草稿，但「補記已完成、開帳未完成」
+ * 必須保留。只存在記憶體；重新整理後依伺服器資料恢復（補記已計入有效關帳現金，差額為 0，不再提供選項）。
+ */
+type OpeningChainPhase = 'checking' | 'entry' | 'entry-done' | 'opening-check' | 'opening' | 'stopped' | 'opening-failed';
+
+interface OpeningChain {
+  token: symbol;
+  dayId: string;
+  openingCash: number;
+  reason: string;
+  entry: { commandId: string; targetDayId: string; direction: PostCloseDirection; amount: number } | null;
+  openingCommandId: string | null;
+  phase: OpeningChainPhase;
+  message: string;
+}
+
+function chainInFlight(chain: OpeningChain | null): boolean {
+  return chain !== null && chain.phase !== 'stopped' && chain.phase !== 'opening-failed';
+}
 
 type RecoveryPhase = 'submitting' | 'unknown' | 'checking' | 'receipt' | 'access-lost';
 
@@ -126,6 +151,11 @@ interface PageState {
   menuDraft: CloudDayMenuDraft;
   openingCashText: string;
   openingReasonText: string;
+  /** 勾選「同時把差額補記到上一個已關帳日」（#734）；預設不勾選。 */
+  openingPostCloseChecked: boolean;
+  /** 送出前重讀發現資料變了、沒有送出時的說明。 */
+  openingPostCloseStale: string;
+  openingChain: OpeningChain | null;
   recovery: RecoveryState | null;
 }
 
@@ -139,8 +169,11 @@ const freshVendorDraft = (): CloudDayVendorDraft => ({
 
 const freshMenuDraft = (): CloudDayMenuDraft => ({ itemName: '', priceText: '', vendorId: '' });
 
-function formDraftsFor(snapshot: CloudDayVendorSnapshot): Pick<PageState,
-  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'openingCashText' | 'openingReasonText'> {
+type FormDrafts = Pick<PageState,
+  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'openingCashText'
+  | 'openingReasonText' | 'openingPostCloseChecked' | 'openingPostCloseStale'>;
+
+function formDraftsFor(snapshot: CloudDayVendorSnapshot): FormDrafts {
   return {
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -158,6 +191,8 @@ function formDraftsFor(snapshot: CloudDayVendorSnapshot): Pick<PageState,
       ? ''
       : String(snapshot.day.openingCash),
     openingReasonText: '',
+    openingPostCloseChecked: false,
+    openingPostCloseStale: '',
   };
 }
 
@@ -181,12 +216,14 @@ function initialPageState(scopeKey: string): PageState {
     menuDraft: freshMenuDraft(),
     openingCashText: '',
     openingReasonText: '',
+    openingPostCloseChecked: false,
+    openingPostCloseStale: '',
+    openingChain: null,
     recovery: null,
   };
 }
 
-function clearFormDrafts(): Pick<PageState,
-  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'openingCashText' | 'openingReasonText'> {
+function clearFormDrafts(): FormDrafts {
   return {
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -196,6 +233,8 @@ function clearFormDrafts(): Pick<PageState,
     menuDraft: freshMenuDraft(),
     openingCashText: '',
     openingReasonText: '',
+    openingPostCloseChecked: false,
+    openingPostCloseStale: '',
   };
 }
 
@@ -263,11 +302,16 @@ function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'save-vendor') return `${command.expectedRevision === 0 ? '新增' : '修改'}供應商 ${command.vendorId}`;
   if (command.kind === 'remove-vendor') return `移除供應商 ${command.vendorId}`;
   if (command.kind === 'set-day-menu') return `設定 ${command.dayId} 菜單`;
+  if (command.kind === 'record-post-close-entry') {
+    return `補記 ${command.dayId} ${command.direction === 'income' ? '收入' : '支出'} ${formatMoney(command.amount)}`;
+  }
   return `確認 ${command.dayId} 開帳現金`;
 }
 
 function commandDayId(command: PreparedCommand): string {
-  return command.kind === 'save-vendor' || command.kind === 'remove-vendor' ? command.viewDayId : command.dayId;
+  return command.kind === 'save-vendor' || command.kind === 'remove-vendor' || command.kind === 'record-post-close-entry'
+    ? command.viewDayId
+    : command.dayId;
 }
 
 function freezeValue<T>(input: T): T {
@@ -315,6 +359,13 @@ function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayVendor
       inheritedFromDate: command.inheritedFromDate,
     },
   };
+  if (command.kind === 'record-post-close-entry') return {
+    kind: 'record-post-close-entry', input: {
+      commandId: command.commandId, leaseEpoch, dayId: command.dayId,
+      expectedDayRevision: command.expectedDayRevision, expectedSettlementRevision: command.expectedSettlementRevision,
+      direction: command.direction, amount: command.amount, reason: command.reason,
+    },
+  };
   return {
     kind: 'set-opening-cash', input: {
       commandId: command.commandId, leaseEpoch, dayId: command.dayId,
@@ -322,6 +373,19 @@ function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayVendor
       ...(command.reason === undefined ? {} : { reason: command.reason }),
     },
   };
+}
+
+function chainStatusText(chain: OpeningChain): string {
+  const entry = chain.entry;
+  if (!entry || chain.phase === 'checking' || chain.phase === 'entry') return '';
+  const recorded = `已在 ${formatBusinessDate(entry.targetDayId)} 補記${entry.direction === 'income' ? '收入' : '支出'} ${formatMoney(entry.amount)}`;
+  if (chain.phase === 'stopped') {
+    return `${recorded}，但沒有送出開帳：${chain.message}。請重新確認金額與差額原因，再按「確認開帳金額」；不會再補記一次。`;
+  }
+  if (chain.phase === 'opening-failed') {
+    return `補記已完成、開帳未完成。${recorded}。${chain.message}請重新確認金額與差額原因，再按「確認開帳金額」；不會再補記一次。`;
+  }
+  return `${recorded}；開帳尚未完成。`;
 }
 
 function dayStatusLabel(status: 'open' | 'closed' | 'reopened'): string {
@@ -348,10 +412,13 @@ export function CloudDayVendorsPage({
   const authorizationScopeRef = useRef(authorizationScopeKey);
   const revokedScopeRef = useRef<string | null>(null);
   const pendingCommandIdRef = useRef<string | null>(null);
+  /** The source of truth for the two-step flow (#734); `page.openingChain` only mirrors it for rendering. */
+  const chainRef = useRef<OpeningChain | null>(null);
   if (authorizationScopeRef.current !== authorizationScopeKey) {
     authorizationScopeRef.current = authorizationScopeKey;
     revokedScopeRef.current = null;
     pendingCommandIdRef.current = null;
+    chainRef.current = null;
   }
   const bindingRef = useRef({ db, uid: currentUid, identityKey, leaseEpoch, version: 0 });
   const operationRef = useRef<DayVendorCommandOperation | null>(null);
@@ -366,6 +433,7 @@ export function CloudDayVendorsPage({
       oldOperation.attemptPromise = null;
     }
     operationRef.current = null;
+    chainRef.current = null;
     bindingRef.current = { db, uid: currentUid, identityKey, leaseEpoch, version: bindingRef.current.version + 1 };
   }
   const scopeKey = `${identityKey}:${leaseEpoch}:${bindingRef.current.version}`;
@@ -442,6 +510,7 @@ export function CloudDayVendorsPage({
       operation.attemptPromise = null;
     }
     operationRef.current = null;
+    chainRef.current = null;
     const retainedCommandId = commandId ?? pendingCommandIdRef.current;
     pendingCommandIdRef.current = retainedCommandId;
     onNavigationStateChange?.(identityKey, 'revoked');
@@ -520,6 +589,9 @@ export function CloudDayVendorsPage({
       }
       if (confirmedReceipt && !resolvesOperation) return;
       let acceptedCommand: PreparedCommand | null = null;
+      // #734: a confirmed entry moves the chain on (the effect below then runs the pre-opening check); a confirmed opening ends it.
+      const chainBefore = chainRef.current;
+      let chainAfter: OpeningChain | null | undefined;
       if (resolvesOperation && boundOperation) {
         const completedOperation: DayVendorCommandOperation = boundOperation;
         acceptedCommand = boundOperation.command;
@@ -530,13 +602,29 @@ export function CloudDayVendorsPage({
         completedOperation.attemptPromise = null;
         operationRef.current = null;
         if (confirmedReceipt!.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
+        const accepted = acceptedCommand;
+        if (accepted?.kind === 'record-post-close-entry' && chainBefore?.entry?.commandId === accepted.commandId) {
+          chainAfter = { ...chainBefore, phase: 'entry-done' };
+        } else if (accepted?.kind === 'set-opening-cash' && chainBefore) {
+          chainAfter = null;
+        }
+        if (chainAfter !== undefined) chainRef.current = chainAfter;
       }
+      const chainNow = chainAfter === undefined ? chainRef.current : chainAfter;
+      // The form is refilled from the chain, never from the server day: the opening is not stored yet.
+      const chainDrafts = chainNow && chainNow.dayId === snapshot.dayId && snapshot.day?.openingCash === null
+        ? { openingCashText: String(chainNow.openingCash), openingReasonText: chainNow.reason, openingPostCloseChecked: chainInFlight(chainNow) }
+        : {};
+      const chainCompleted = chainBefore !== null && chainBefore.openingCommandId !== null
+        && acceptedCommand?.kind === 'set-opening-cash' && acceptedCommand.commandId === chainBefore.openingCommandId;
       updateFor(key, generation, previous => {
         const confirmsPending = !!resolvesOperation && !!confirmedReceipt;
         const confirmedCommand = confirmsPending ? acceptedCommand : null;
         return {
           ...previous,
           ...formDraftsFor(snapshot),
+          ...chainDrafts,
+          openingChain: chainAfter === undefined ? previous.openingChain : chainAfter,
           snapshot,
           refreshingSnapshot: null,
           dayIdDraft: snapshot.dayId,
@@ -546,11 +634,16 @@ export function CloudDayVendorsPage({
           actionError: confirmsPending && boundOperation?.cleanupWarning ? boundOperation.cleanupWarning : '',
           recovery: confirmsPending ? null : previous.recovery,
           notice: '',
-          toast: confirmsPending ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成` : '',
+          toast: !confirmsPending ? ''
+            : chainCompleted && confirmedCommand?.kind === 'set-opening-cash'
+              ? `已完成補記，並確認 ${confirmedCommand.dayId} 開帳現金`
+              : `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成`,
         };
       });
       if (resolvesOperation && confirmedReceipt) onDraftCleared?.();
-      if (resolvesOperation && confirmedReceipt?.kind === 'SetOpeningCash') onLedgerChangedRef.current?.();
+      if (resolvesOperation && (confirmedReceipt?.kind === 'SetOpeningCash' || confirmedReceipt?.kind === 'RecordPostCloseEntry')) {
+        onLedgerChangedRef.current?.();
+      }
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
       if (isAuthorizationLoss(error)) {
@@ -589,6 +682,7 @@ export function CloudDayVendorsPage({
 
   useEffect(() => {
     const generation = ++generationRef.current;
+    chainRef.current = null;
     const latched = revokedScopeRef.current === authorizationScopeKey;
     const initial = initialPageState(scopeKey);
     setPageStateRaw(latched ? {
@@ -613,16 +707,19 @@ export function CloudDayVendorsPage({
         operationRef.current = null;
       }
       if (generationRef.current === generation) generationRef.current += 1;
+      chainRef.current = null;
     };
   }, [authorizationScopeKey, loadSnapshot, scopeKey]);
 
   const hasRecovery = page.recovery !== null;
+  // The two steps of "opening + record the difference" lock the form and the navigation, even between the commands.
+  const chainBusy = chainInFlight(page.openingChain);
   useEffect(() => {
     onNavigationStateChange?.(
       identityKey,
-      page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved',
+      page.authorizationRevoked ? 'revoked' : hasRecovery || chainBusy ? 'recovering' : 'resolved',
     );
-  }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
+  }, [chainBusy, hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
   const clearOperationTimer = (operation: DayVendorCommandOperation) => {
     if (operation.timerId !== null) window.clearTimeout(operation.timerId);
@@ -723,6 +820,14 @@ export function CloudDayVendorsPage({
       }
       const completedOperation: DayVendorCommandOperation = operation;
       const failedCommand = completedOperation.command!;
+      const chain = chainRef.current;
+      let failedChain: OpeningChain | null | undefined;
+      if (failedCommand.kind === 'record-post-close-entry' && chain?.entry?.commandId === failedCommand.commandId) {
+        failedChain = null;
+      } else if (failedCommand.kind === 'set-opening-cash' && chain?.openingCommandId === failedCommand.commandId) {
+        failedChain = { ...chain, phase: 'opening-failed', message: errorMessage(result.error) };
+      }
+      if (failedChain !== undefined) chainRef.current = failedChain;
       completedOperation.completed = true;
       operationRef.current = null;
       pendingCommandIdRef.current = null;
@@ -731,7 +836,9 @@ export function CloudDayVendorsPage({
       completedOperation.attemptPromise = null;
       updateFor(operation.identityKey, operation.generation, previous => ({
         ...previous, ...clearFormDrafts(), snapshot: null, loading: false,
-        loadError: '操作未完成：' + errorMessage(result.error) + '請重新載入伺服器資料後繼續。',
+        openingChain: failedChain === undefined ? previous.openingChain : failedChain,
+        loadError: (failedChain?.phase === 'opening-failed' ? '補記已完成，但開帳未完成。' : '')
+          + '操作未完成：' + errorMessage(result.error) + '請重新載入伺服器資料後繼續。',
         actionError: result.error.code === 'LOCAL_STORAGE_UNAVAILABLE' ? errorMessage(result.error)
           : failedCommand.kind === 'set-day-menu' && ['REVISION_CONFLICT', 'INVALID_INPUT'].includes(result.error.code)
             ? '本次菜單命令未成功，輸入與來源日期沒有自動改寫。請重新載入並確認最新菜單；若剛過午夜，請重新載入後再儲存。'
@@ -792,12 +899,15 @@ export function CloudDayVendorsPage({
     }
     if (!ownsOperation(operation)) return;
     beginAttempt(operation);
+    // Captured now: when a command starts outside a React event (the second step of #734), React applies this update after the
+    // command may already have finished and cleared `operation.command`.
+    const startedCommand = operation.command;
     updateFor(operation.identityKey, operation.generation, previous => ({
       // The confirmed content stays on screen, locked, while the command is in flight (#585); it is display only.
       ...previous, snapshot: null, refreshingSnapshot: previous.snapshot ?? previous.refreshingSnapshot,
       loading: false, loadError: '', actionError: '', notice: '', toast: '',
       recovery: {
-        commandId: operation!.command.commandId, command: operation!.command,
+        commandId: startedCommand.commandId, command: startedCommand,
         phase: 'submitting', timedOut: false, canRetry: false,
       },
     }));
@@ -1130,10 +1240,171 @@ export function CloudDayVendorsPage({
     void runPreparedCommand({ kind: 'set-day-menu', commandId, ...input });
   };
 
+  // ---- #734 開帳同時補記差額：先補記、再開帳（兩個既有命令，各自一個命令編號）----
+  const offerFor = (text: string): OpeningPostCloseOffer | null => {
+    const openingCash = /^\d+$/.test(text) ? Number(text) : null;
+    const day = snapshot?.day ?? null;
+    if (!day || !lookupContext || openingCash === null || openingCash > 20_000) return null;
+    if (page.openingChain !== null && !chainInFlight(page.openingChain)) return null;
+    return openingPostCloseOffer(lookupContext, openingCash, day.openingCash);
+  };
+
+  const readLatestOpening = async (dayId: string) => {
+    const latest = await repository.loadSnapshot(dayId);
+    const context = await repository.findOpeningContext(dayId);
+    return { snapshot: latest, context };
+  };
+
+  /** Everything after an await in the chain must still belong to the same page, user, lease and chain. */
+  const chainGuard = (token: symbol) => {
+    const key = scopeKey;
+    const generation = generationRef.current;
+    const bound = bindingRef.current;
+    let uid: string | null = null;
+    try { uid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+    const owned = () => {
+      let current: string | null = null;
+      try { current = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+      return chainRef.current?.token === token && isCurrent(key, generation)
+        && revokedScopeRef.current !== authorizationScopeKey
+        && uid !== null && current === uid
+        && bindingRef.current.uid === uid && bindingRef.current.db === bound.db
+        && bindingRef.current.leaseEpoch === bound.leaseEpoch && bindingRef.current.version === bound.version;
+    };
+    const update = (change: (previous: PageState) => PageState) => updateFor(key, generation, change);
+    const setChain = (next: OpeningChain | null) => {
+      chainRef.current = next;
+      update(previous => ({ ...previous, openingChain: next }));
+    };
+    return { key, generation, uid, owned, update, setChain };
+  };
+
+  const chainReadFailed = (guard: ReturnType<typeof chainGuard>, error: unknown, stopMessage: string | null) => {
+    if (!guard.owned()) return;
+    if (isAuthorizationLoss(error)) {
+      revokeAuthorization(guard.key, guard.generation, null, error);
+      return;
+    }
+    const chain = chainRef.current!;
+    if (stopMessage === null) {
+      guard.setChain(null);
+      guard.update(previous => ({
+        ...previous, actionError: `沒有送出任何命令：${errorMessage(error)}請稍後再試。`,
+      }));
+      return;
+    }
+    guard.setChain({ ...chain, phase: 'stopped', message: stopMessage });
+  };
+
+  const startPostCloseChain = async (input: {
+    snapshot: CloudDayVendorSnapshot; openingCash: number; reason: string;
+    offer: OpeningPostCloseOffer; context: CloudOpeningContextLookup;
+  }) => {
+    if (chainRef.current !== null && chainInFlight(chainRef.current)) return;
+    const dayId = input.snapshot.dayId;
+    const token = Symbol('opening-post-close-chain');
+    const guard = chainGuard(token);
+    if (!guard.uid || operationRef.current || revokedScopeRef.current === authorizationScopeKey) return;
+    const base: OpeningChain = {
+      token, dayId, openingCash: input.openingCash, reason: input.reason,
+      entry: null, openingCommandId: null, phase: 'checking', message: '',
+    };
+    guard.setChain(base);
+    guard.update(previous => ({ ...previous, openingPostCloseStale: '', actionError: '' }));
+    try {
+      const latest = await readLatestOpening(dayId);
+      if (!guard.owned()) return;
+      const day = latest.snapshot.day;
+      const latestOffer = openingPostCloseOffer(latest.context, input.openingCash, day?.openingCash ?? null);
+      const midnight = latest.snapshot.selectionDate !== dayId;
+      const changed = latest.snapshot.datasetId !== input.snapshot.datasetId
+        || !day || day.status === 'closed' || day.revision !== input.snapshot.day?.revision || day.openingCash !== null
+        || !sameOpeningContext(input.context, latest.context)
+        || !latestOffer || latestOffer.direction !== input.offer.direction || latestOffer.amount !== input.offer.amount
+        || latestOffer.targetDayId !== input.offer.targetDayId;
+      if (midnight || changed) {
+        chainRef.current = null;
+        setPreviousLookup({ status: 'ready', dayId, context: latest.context });
+        guard.update(previous => ({
+          ...previous,
+          snapshot: latest.snapshot,
+          openingChain: null,
+          openingReasonText: '',
+          openingPostCloseChecked: false,
+          openingPostCloseStale: midnight
+            ? '已過午夜，今天的營業日已變更，沒有送出。請重新載入後再操作。'
+            : '資料已更新，沒有送出。請核對最新的日期、差額與金額後重新勾選。',
+        }));
+        return;
+      }
+      const commandId = makePreparedCommandId();
+      if (!commandId) { guard.setChain(null); return; }
+      const previousClosed = latest.context.previous!;
+      guard.setChain({
+        ...base, phase: 'entry',
+        entry: { commandId, targetDayId: previousClosed.dayId, direction: latestOffer.direction, amount: latestOffer.amount },
+      });
+      await runPreparedCommand({
+        kind: 'record-post-close-entry', commandId, viewDayId: dayId, dayId: previousClosed.dayId,
+        expectedDayRevision: previousClosed.dayRevision, expectedSettlementRevision: previousClosed.settlementRevision,
+        direction: latestOffer.direction, amount: latestOffer.amount, reason: input.reason,
+      });
+      // The command never started (for example offline): nothing was sent, so the chain ends here.
+      if (guard.owned() && chainRef.current?.phase === 'entry' && operationRef.current === null) guard.setChain(null);
+    } catch (error) {
+      chainReadFailed(guard, error, null);
+    }
+  };
+
+  const continueOpeningChain = async () => {
+    const chain = chainRef.current;
+    const screen = page.snapshot;
+    if (!chain || chain.phase !== 'entry-done' || !screen) return;
+    const guard = chainGuard(chain.token);
+    guard.setChain({ ...chain, phase: 'opening-check' });
+    const entry = chain.entry!;
+    const stop = (message: string, latest?: { snapshot: CloudDayVendorSnapshot; context: CloudOpeningContextLookup }) => {
+      if (!guard.owned()) return;
+      if (latest) setPreviousLookup({ status: 'ready', dayId: chain.dayId, context: latest.context });
+      guard.setChain({ ...chain, phase: 'stopped', message });
+      if (latest) guard.update(previous => ({ ...previous, snapshot: latest.snapshot }));
+    };
+    try {
+      const latest = await readLatestOpening(chain.dayId);
+      if (!guard.owned()) return;
+      const day = latest.snapshot.day;
+      const difference = openingDifference(latest.context.previous, chain.openingCash);
+      if (latest.snapshot.selectionDate !== chain.dayId) return stop('已過午夜，今天的營業日已變更', latest);
+      if (latest.snapshot.datasetId !== screen.datasetId) return stop('伺服器資料集已變更', latest);
+      if (!day || day.status === 'closed') return stop('營業日狀態已變更', latest);
+      if (day.openingCash !== null) return stop(`今天已經開帳為 ${formatMoney(day.openingCash)}`, latest);
+      if (difference !== null) return stop(`補記後又出現 ${formatMoney(Math.abs(difference))} 的差額`, latest);
+      const commandId = makePreparedCommandId();
+      if (!commandId) return stop('瀏覽器無法建立安全的命令編號');
+      guard.setChain({ ...chain, phase: 'opening', openingCommandId: commandId, entry });
+      await runPreparedCommand({
+        kind: 'set-opening-cash', commandId, dayId: chain.dayId, expectedRevision: day.revision,
+        openingCash: chain.openingCash, reason: chain.reason,
+      });
+      if (guard.owned() && chainRef.current?.phase === 'opening' && operationRef.current === null) {
+        stop('開帳尚未送出，請確認連線後再按一次');
+      }
+    } catch (error) {
+      chainReadFailed(guard, error, '無法確認最新資料，請稍後再試');
+    }
+  };
+
+  // After a confirmed entry the page re-reads once; only then does the pre-opening check run (never twice: the ref phase flips first).
+  useEffect(() => {
+    if (chainRef.current?.phase !== 'entry-done' || page.openingChain?.phase !== 'entry-done') return;
+    if (page.loading || !page.snapshot || page.recovery || page.authorizationRevoked) return;
+    void continueOpeningChain();
+  });
+
   const submitOpeningCash = (amountText: string) => {
     const snapshot = page.snapshot;
     const day = snapshot?.day;
-    if (!snapshot || !day || page.recovery) return;
+    if (!snapshot || !day || page.recovery || chainInFlight(chainRef.current)) return;
     if (snapshot.dayId !== snapshot.selectionDate || snapshot.selectionDate < snapshot.goLiveDate) {
       updatePage(previous => ({ ...previous, actionError: '開帳現金只能設定今天的營業日；若剛過午夜，請重新載入後再試。' }));
       return;
@@ -1157,13 +1428,18 @@ export function CloudDayVendorsPage({
         updatePage(previous => ({ ...previous, actionError: '尚未確認上一個已關帳日的實點現金，請稍候或重新整理後再開帳。' }));
         return;
       }
-      if (openingDifference(previousLookup.previous, openingCash) !== null) {
+      if (openingDifference(previousLookup.context.previous, openingCash) !== null) {
         reason = page.openingReasonText.trim();
         if (reason.length < 1 || reason.length > 500) {
           updatePage(previous => ({ ...previous, actionError: '開帳現金與上次關帳實點不同，必須填寫 1 至 500 字的差額原因。' }));
           return;
         }
       }
+    }
+    const offer = page.openingPostCloseChecked ? offerFor(amountText) : null;
+    if (offer && lookupContext && reason !== undefined) {
+      void startPostCloseChain({ snapshot, openingCash, reason, offer, context: lookupContext });
+      return;
     }
     const commandId = makePreparedCommandId();
     if (!commandId) return;
@@ -1184,7 +1460,7 @@ export function CloudDayVendorsPage({
   const quietReceipt = recovery?.phase === 'receipt' && recovery.quiet === true && !page.loadError
     && (page.loading || page.snapshot !== null || page.refreshingSnapshot !== null);
   const showRecoveryPanel = recovery !== null && !quietSubmitting && !quietReceipt;
-  const progressActive = page.loading || quietSubmitting || quietReceipt
+  const progressActive = page.loading || quietSubmitting || quietReceipt || chainBusy
     || recovery?.phase === 'checking' || (recovery?.phase === 'submitting' && recovery.timedOut === true);
   // Display only (#585): the confirmed content from before the command stays on screen, locked (`inert`), while the command is in
   // flight or its receipt is re-read. Never kept once the authorization is revoked or the read failed; no command is built from it.
@@ -1193,13 +1469,13 @@ export function CloudDayVendorsPage({
       ? page.refreshingSnapshot
       : null);
   const showingStale = page.snapshot === null && snapshot !== null;
-  const busy = page.recovery !== null || showingStale;
+  const busy = page.recovery !== null || showingStale || chainBusy;
   // #710 P2: switching between 菜單與開帳 (day) and 供應商 (vendors) re-reads like any other page switch, keeping the viewed date
   // (the instance is kept so a menu being prepared is not remounted). Only when idle: never beside an unresolved command,
   // a revoked authorization or a read in progress; the loader itself also keeps the same-identity revoke latch.
   const previousViewRef = useRef(view);
   const idleReadDayId = revokedScopeRef.current !== authorizationScopeKey && !page.authorizationRevoked
-    && page.recovery === null && !page.loading && !showingStale
+    && page.recovery === null && !page.loading && !showingStale && !chainBusy
     ? (page.snapshot?.dayId ?? page.dayIdDraft) || undefined
     : null;
   const idleReadDayIdRef = useRef(idleReadDayId);
@@ -1222,8 +1498,8 @@ export function CloudDayVendorsPage({
   useEffect(() => {
     if (lookupDayId === null) return undefined;
     let cancelled = false;
-    repository.findPreviousClosed(lookupDayId).then(
-      result => { if (!cancelled) setPreviousLookup({ status: 'ready', dayId: lookupDayId, previous: result.previous }); },
+    repository.findOpeningContext(lookupDayId).then(
+      result => { if (!cancelled) setPreviousLookup({ status: 'ready', dayId: lookupDayId, context: result }); },
       (error: unknown) => {
         if (cancelled) return;
         setPreviousLookup({
@@ -1234,7 +1510,12 @@ export function CloudDayVendorsPage({
     return () => { cancelled = true; };
   }, [repository, lookupDayId, ledgerKey, lookupAttempt]);
   const lookupReady = previousLookup.status === 'ready' && previousLookup.dayId === lookupDayId;
+  const lookupContext = lookupReady ? previousLookup.context : null;
   const lookupError = previousLookup.status === 'error' && previousLookup.dayId === lookupDayId;
+  const postCloseOffer = offerFor(page.openingCashText);
+  const postCloseChecked = page.openingPostCloseChecked && postCloseOffer !== null;
+  const chain = page.openingChain;
+  const chainStatus = chain?.entry && chain.dayId === snapshot?.dayId ? chainStatusText(chain) : '';
   return (
     <main className="cloud-day-vendors" aria-label="雲端日期設定與供應商管理" aria-busy={busy || page.loading}>
       <CommandProgress active={progressActive} />
@@ -1383,6 +1664,12 @@ export function CloudDayVendorsPage({
                     <Callout variant="warn">今天早於系統啟用日，尚不能設定開帳現金。</Callout>
                   )}
                   {canSetOpeningCash && <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />}
+                  {chainStatus && (
+                    <Callout variant="warn" role="status"><span data-testid="opening-chain-status">{chainStatus}</span></Callout>
+                  )}
+                  {page.openingPostCloseStale && (
+                    <Callout variant="warn" role="alert"><span data-testid="opening-post-close-stale">{page.openingPostCloseStale}</span></Callout>
+                  )}
                   {canSetOpeningCash && ledger && lookupError && (
                     <button
                       type="button"
@@ -1399,11 +1686,22 @@ export function CloudDayVendorsPage({
                       businessDate={snapshot.dayId}
                       currentOpeningCash={snapshot.day.openingCash}
                       amountText={page.openingCashText}
-                      onAmountTextChange={value => updatePage(previous => ({ ...previous, openingCashText: value, actionError: '' }))}
+                      onAmountTextChange={value => updatePage(previous => ({
+                        ...previous,
+                        openingCashText: value,
+                        actionError: '',
+                        openingPostCloseStale: '',
+                        openingPostCloseChecked: previous.openingPostCloseChecked && offerFor(value) !== null,
+                      }))}
                       onSubmit={submitOpeningCash}
                       disabled={busy}
+                      postCloseOffer={postCloseOffer}
+                      postCloseChecked={postCloseChecked}
+                      onPostCloseCheckedChange={checked => updatePage(previous => ({
+                        ...previous, openingPostCloseChecked: checked, openingPostCloseStale: '', actionError: '',
+                      }))}
                       {...(ledger ? {
-                        previousClosed: lookupReady ? previousLookup.previous : null,
+                        previousClosed: lookupContext?.previous ?? null,
                         ledgerNotice: lookupError
                           ? `無法確認上一個已關帳日的實點現金（${previousLookup.message}），暫時不能開帳。`
                           : lookupReady ? '' : '正在確認上一個已關帳日的實點現金…',

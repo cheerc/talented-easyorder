@@ -277,6 +277,85 @@ export async function seedAdjacentCashGap(): Promise<AdjacentCashGapScenario> {
   return { olderDay: days[0], newerDay: days[1], days, cleanup };
 }
 
+export interface OpeningPostCloseCandidateScenario extends ScenarioHandle {
+  today: string;
+  previousDay: string;
+  /** 以 Admin 在上一個已關帳日寫一筆補記，模擬另一個分頁先補記（只能建立前置狀態；被測的行為走 UI 命令）。 */
+  addForeignEntry(): Promise<string>;
+  postCloseEntries(): Promise<Array<{ id: string; direction: string; amount: number; reason: string }>>;
+  openingCash(): Promise<number | null>;
+}
+
+/**
+ * #734：今天尚未開帳，上一個已關帳日 P（關帳現金 1000）與今天之間每一天都有空白營業日文件（沒有缺日、沒有未關帳日），
+ * 所以開帳表單可以提供「同時補記差額」。區間內已有營業日文件時直接丟錯，不覆寫其他 suite 的資料。
+ */
+export async function seedOpeningPostCloseCandidate(): Promise<OpeningPostCloseCandidateScenario> {
+  const today = taipeiToday();
+  await assertDayAbsent(today);
+  // 營業日文件不存在不代表乾淨：同一個 Emulator 上前面的 spec 可能只刪營業日與 settlements/1，留下重開再關帳產生的
+  // settlements/2…或補記；日結頁讀這一天會因日結版本數量對不上而拒絕載入。所以也跳過仍有這些殘留的日子。
+  const entryDays = new Set((await listRaw('postCloseEntries')).map(item => item.fields.dayId?.stringValue));
+  let previousDay: string | null = null;
+  for (let offset = 5; offset < 30 && previousDay === null; offset++) {
+    const day = shiftDay(today, -offset);
+    if ((await readRaw('days', day)) !== null || entryDays.has(day)) continue;
+    if ((await listRaw(`days/${day}/settlements`)).length === 0) previousDay = day;
+  }
+  if (previousDay === null) throw new Error('近期沒有可用的合成 fixture 日期');
+  const between: string[] = [];
+  for (let day = shiftDay(previousDay, 1); day < today; day = shiftDay(day, 1)) {
+    if ((await readRaw('days', day)) !== null) throw new Error(`days/${day} 已存在；scenario 不覆寫既有營業日`);
+    between.push(day);
+  }
+  const head = await captureHead();
+  await upsertDocument('system', 'dataHead', { goLiveDate: previousDay });
+  await upsertDocument('days', previousDay, {
+    status: 'closed', revision: 1, menu: null, openingCash: 1000, openedBy: SEED_ACTOR, openedAt: new Date(),
+    totals: ZERO_TOTALS, lastSettlementRevision: 1, lastCommandId: SEED_COMMAND, updatedAt: new Date(),
+  });
+  await upsertDocument(`days/${previousDay}/settlements`, '1', {
+    dayId: previousDay, revision: 1, status: 'closed', totals: ZERO_TOTALS, openingCash: 1000, expectedCash: 1000, countedCash: 1000,
+    difference: 0, note: '', actorUid: SEED_ACTOR, actorEmail: 'synthetic@example.test', sourceSeq: 1,
+    committedAt: new Date(), previousRevision: 0, lastCommandId: SEED_COMMAND,
+  });
+  for (const day of between) await upsertDocument('days', day, openDayData(null, null, null));
+  await upsertDocument('days', today, openDayData(null, null, null));
+  const entries = async () => (await listRaw('postCloseEntries'))
+    .filter(item => item.fields.dayId?.stringValue === previousDay)
+    .map(item => ({
+      id: item.id,
+      direction: item.fields.direction?.stringValue ?? '',
+      amount: Number(item.fields.amount?.integerValue ?? 0),
+      reason: item.fields.reason?.stringValue ?? '',
+    }));
+  const cleanup = cleanupAfter(head, async () => {
+    for (const entry of await entries()) await removeDocument('postCloseEntries', entry.id);
+    await removeDocument('days', today);
+    for (const day of between) await removeDocument('days', day);
+    await removeDocument(`days/${previousDay}/settlements`, '1');
+    await removeDocument('days', previousDay);
+  });
+  return {
+    today,
+    previousDay,
+    cleanup,
+    postCloseEntries: entries,
+    openingCash: async () => {
+      const fields = await readRaw('days', today);
+      return fields?.openingCash?.integerValue === undefined ? null : Number(fields.openingCash.integerValue);
+    },
+    addForeignEntry: async () => {
+      const id = 'a0734000-0000-4000-8000-000000000001';
+      await upsertDocument('postCloseEntries', id, {
+        entryId: id, dayId: previousDay, settlementRevision: 1, direction: 'expense', amount: 50,
+        reason: '合成情境：另一個分頁已補記', createdBy: SEED_ACTOR, createdAt: new Date(), commandId: id,
+      });
+      return id;
+    },
+  };
+}
+
 // ---------------------------------------------------------------- 供應商（F4）
 
 export interface VendorsScenario extends ScenarioHandle {

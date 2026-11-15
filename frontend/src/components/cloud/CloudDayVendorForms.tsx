@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import type { OpeningPostCloseOffer } from '../../domain/openingPostClose';
 import type { CloudLastWeekMenuItem } from '../../firebase/cloudDayVendorRepository';
 import { businessWeekday, formatBusinessDate } from '../../utils/businessDate';
 import { Callout } from '../ui/Callout';
@@ -308,6 +309,10 @@ interface CloudDayOpeningCashFormProps {
   ledgerNotice?: string;
   reasonText?: string;
   onReasonTextChange?: (value: string) => void;
+  /** 可把差額補記到上一個已關帳日時才有值（#734）；null 或省略就不顯示選項。 */
+  postCloseOffer?: OpeningPostCloseOffer | null;
+  postCloseChecked?: boolean;
+  onPostCloseCheckedChange?: (checked: boolean) => void;
 }
 
 function formatMoney(value: number): string {
@@ -325,7 +330,11 @@ export function CloudDayOpeningCashForm({
   ledgerNotice = '',
   reasonText = '',
   onReasonTextChange,
+  postCloseOffer = null,
+  postCloseChecked = false,
+  onPostCloseCheckedChange,
 }: CloudDayOpeningCashFormProps) {
+  const recordsPostClose = postCloseOffer !== null && postCloseChecked;
   const typedAmount = /^\d+$/.test(amountText) ? Number(amountText) : null;
   const difference = previousClosed && typedAmount !== null ? openingDifference(previousClosed, typedAmount) : null;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -383,9 +392,35 @@ export function CloudDayOpeningCashForm({
           </label>
         </>
       )}
+      {postCloseOffer && (
+        <>
+          <div className="cloud-day-form__check-row">
+            <label className="cloud-day-form__check">
+              <input
+                type="checkbox"
+                checked={postCloseChecked}
+                onChange={event => onPostCloseCheckedChange?.(event.target.checked)}
+                disabled={disabled}
+              />
+              同時把差額補記到 {formatBusinessDate(postCloseOffer.targetDayId)}
+            </label>
+            <HelpTip label="補記差額說明">
+              勾選後按一次按鈕，會依序送出兩個操作：先在上一個已關帳日補記這筆差額，再確認今天的開帳現金。{'\n'}差額原因只需要填一次，兩邊使用同一個原因。
+            </HelpTip>
+          </div>
+          {recordsPostClose && (
+            <Callout variant="warn">
+              <span data-testid="post-close-preview">
+                將在 {formatBusinessDate(postCloseOffer.targetDayId)} 補記一筆{postCloseOffer.direction === 'income' ? '收入' : '支出'} {formatMoney(postCloseOffer.amount)}。
+                補記送出後不能修改或刪除。先補記，再開帳；兩筆使用上方同一個差額原因。
+              </span>
+            </Callout>
+          )}
+        </>
+      )}
       <div className="cloud-day-form__actions">
         <button type="submit" className="cloud-day-form__primary" disabled={disabled || ledgerNotice !== ''}>
-          {currentOpeningCash === null ? '確認開帳金額' : '更新開帳金額'}
+          {recordsPostClose ? '補記差額並開帳' : currentOpeningCash === null ? '確認開帳金額' : '更新開帳金額'}
         </button>
       </div>
     </form>

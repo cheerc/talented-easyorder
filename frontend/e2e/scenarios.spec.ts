@@ -2,7 +2,7 @@
 // 每個 scenario 用 Admin REST 建立「前置狀態」，再從真 App 進入，斷言畫面確實到達該狀態；
 // 被測行為（停用、恢復、移除供應商）一律走 UI 正式命令。只使用 demo-easyorder Emulator 與合成資料。
 import { test, expect } from './fixtures';
-import { accountCheck } from './helpers/navigation';
+import { accountCheck, settings } from './helpers/navigation';
 import { enterSystem } from './helpers/session';
 import { seedAccessLease } from './helpers/seed';
 import {
@@ -12,6 +12,7 @@ import {
   seedBackfillInProgress,
   seedOpenDayWithMenu,
   seedOpenDayWithoutMenu,
+  seedOpeningPostCloseCandidate,
   seedPendingCommand,
   seedUnclosedPastDays,
   seedUnopenedPastDay,
@@ -262,6 +263,83 @@ test.describe('具名業務情境 fixtures', () => {
     } finally {
       await scenario.cleanup();
     }
+  });
+
+  // #734：開帳表單的「同時補記差額」走真正的 App 與 demo Emulator；Rules 與 command 都是既有的。
+  test.describe('#734 開帳時一併補記差額', () => {
+    const REASON = '合成情境：前一天漏記現金支出 50 元';
+    const mainOf = (page: Page) => page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+
+    test('#734-1：勾選後一次完成補記與開帳，異常不再出現，補記歷史留在上一個已關帳日', async ({ googleSession }) => {
+      const { page } = googleSession;
+      const scenario = await seedOpeningPostCloseCandidate();
+      try {
+        await acquire(page);
+        await settings(page, '菜單與開帳');
+        const main = mainOf(page);
+        const form = main.getByRole('form', { name: `${scenario.today} 開帳現金` });
+        await form.getByLabel(/^開帳現金/).fill('950');
+        const option = form.getByRole('checkbox', { name: new RegExp(`同時把差額補記到 ${scenario.previousDay}`) });
+        await expect(option).toBeVisible();
+        await expect(option).not.toBeChecked();
+        await form.getByLabel(/差額原因/).fill(REASON);
+        await option.check();
+        const preview = form.getByTestId('post-close-preview');
+        await expect(preview).toContainText(scenario.previousDay);
+        await expect(preview).toContainText('支出');
+        await expect(preview).toContainText('NT$ 50');
+        await expect(preview).toContainText('不能修改或刪除');
+        await form.getByRole('button', { name: '補記差額並開帳' }).click();
+
+        await expect(main.getByText(new RegExp(`已完成補記，並確認 ${scenario.today} 開帳現金`))).toBeVisible();
+        expect(await scenario.openingCash()).toBe(950);
+        expect(await scenario.postCloseEntries()).toEqual([
+          expect.objectContaining({ direction: 'expense', amount: 50, reason: REASON }),
+        ]);
+
+        await expect(page.getByRole('button', { name: '異常 1' })).toHaveCount(0);
+        await accountCheck(page);
+        await expect(page.getByTestId(`post-close-shortcut-${scenario.today}`)).toHaveCount(0);
+
+        await mainNav(page, '今日帳').click();
+        const close = page.getByRole('main', { name: '雲端日結' });
+        // 等今天的日結載入完成再改日期；載入中改的日期會被載入結果蓋回今天。
+        await expect(close.getByRole('heading', { name: `${withWeekday(scenario.today)} 日結` })).toBeVisible({ timeout: 15_000 });
+        await close.getByLabel('營業日', { exact: true }).fill(scenario.previousDay);
+        await close.getByLabel('營業日', { exact: true }).press('Enter');
+        await expect(close.getByRole('heading', { name: `${withWeekday(scenario.previousDay)} 日結` })).toBeVisible({ timeout: 15_000 });
+        await expect(close.getByRole('heading', { name: '關帳後補記歷史' })).toBeVisible();
+        await expect(close.getByText(REASON)).toBeVisible();
+      } finally {
+        await scenario.cleanup();
+      }
+    });
+
+    test('#734-2：另一個分頁先補記同樣的金額，這邊不送出，改顯示最新的有效關帳現金', async ({ googleSession }) => {
+      const { page } = googleSession;
+      const scenario = await seedOpeningPostCloseCandidate();
+      try {
+        await acquire(page);
+        await settings(page, '菜單與開帳');
+        const main = mainOf(page);
+        const form = main.getByRole('form', { name: `${scenario.today} 開帳現金` });
+        await form.getByLabel(/^開帳現金/).fill('950');
+        const option = form.getByRole('checkbox', { name: new RegExp(`同時把差額補記到 ${scenario.previousDay}`) });
+        await expect(option).toBeVisible();
+        await form.getByLabel(/差額原因/).fill(REASON);
+        await option.check();
+
+        await scenario.addForeignEntry();
+        await form.getByRole('button', { name: '補記差額並開帳' }).click();
+
+        await expect(main.getByTestId('opening-post-close-stale')).toContainText('沒有送出');
+        await expect(form.getByText(/有效關帳現金 NT\$ 950/)).toBeVisible();
+        expect(await scenario.postCloseEntries()).toHaveLength(1);
+        expect(await scenario.openingCash()).toBeNull();
+      } finally {
+        await scenario.cleanup();
+      }
+    });
   });
 
   test('R2：待核對命令在取得使用權後顯示命令編號', async ({ googleSession }) => {
