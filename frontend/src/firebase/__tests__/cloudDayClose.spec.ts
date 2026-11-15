@@ -2261,6 +2261,42 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await entryCount()).toBe(entries);
   }
 
+  it('P734.1: opening context tracks entries without changing day or settlement revisions', async () => {
+    const previous = shiftDate(today, -2);
+    await closePast(previous, 830, 1000);
+    await seedGapDay(shiftDate(today, -1));
+    const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
+    );
+    const before = await vendor.findOpeningContext(today);
+    expect(before).toMatchObject({ previous: { dayId: previous, countedCash: 1000, postCloseNet: 0, countedEntryIds: [] }, gapDayCount: 0, unclosedDayIds: [] });
+    const entryId = uuid();
+    ok(await recordEntry(previous, { commandId: entryId }));
+    const after = await vendor.findOpeningContext(today);
+    expect(after.previous).toMatchObject({ dayRevision: before.previous!.dayRevision, settlementRevision: before.previous!.settlementRevision, postCloseNet: -50, countedEntryIds: [entryId] });
+  });
+
+  it('P734.2: vendor post-close intent commits idempotently, confirms and refuses invalid revisions', async () => {
+    const previous = shiftDate(today, -2);
+    await closePast(previous, 830, 1000);
+    const day = (await read(`days/${previous}`))!;
+    const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
+    );
+    const intent = { kind: 'record-post-close-entry' as const, input: {
+      commandId: uuid(), leaseEpoch: 1, dayId: previous, expectedDayRevision: day.revision,
+      expectedSettlementRevision: day.lastSettlementRevision, direction: 'expense' as const, amount: 50, reason: PC_REASON,
+    } };
+    const receipt = ok(await vendor.commitDayVendorIntent(intent));
+    expect(ok(await vendor.commitDayVendorIntent(intent))).toEqual(receipt);
+    expect(await entryCount()).toBe(1);
+    expect(await vendor.confirmPendingIntent(intent, 'p11-close-dataset', operatorA.uid)).toMatchObject({ status: 'matched' });
+    const stale = { ...intent, input: { ...intent.input, commandId: uuid(), expectedDayRevision: day.revision - 1 } };
+    expect(await vendor.commitDayVendorIntent(stale)).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+    const open = { ...intent, input: { ...intent.input, commandId: uuid(), dayId: today, expectedDayRevision: 6, expectedSettlementRevision: 0 } };
+    expect(await vendor.commitDayVendorIntent(open)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+  });
+
   it('P11c4.1: a closed day takes a marked entry without touching the day; a retry returns the same receipt', async () => {
     const monday = shiftDate(today, -3);
     await seedClosedDay(monday);

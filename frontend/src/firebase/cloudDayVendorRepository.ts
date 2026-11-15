@@ -27,7 +27,10 @@ import {
   type CanonicalEnabledInput,
 } from '../domain/cloudCommandSchema';
 import { openingDifference, type PreviousClosedDay } from '../domain/ledgerAnomalies';
-import { CloudDayCloseRepositoryError, createCloudLedgerReader, type CloudPreviousClosedLookup } from './cloudDayCloseRepository';
+import {
+  buildPostCloseEntryCommand, CloudDayCloseRepositoryError, createCloudLedgerReader,
+  type CloudOpeningContextLookup, type CloudPreviousClosedLookup, type RecordCloudPostCloseEntryInput,
+} from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -184,7 +187,8 @@ export type CloudDayVendorCommandIntent =
   | { kind: 'save-vendor'; input: SaveVendorInput }
   | { kind: 'remove-vendor'; input: RemoveVendorInput }
   | { kind: 'set-day-menu'; input: SetDayMenuInput }
-  | { kind: 'set-opening-cash'; input: SetOpeningCashInput };
+  | { kind: 'set-opening-cash'; input: SetOpeningCashInput }
+  | { kind: 'record-post-close-entry'; input: RecordCloudPostCloseEntryInput };
 
 export interface CloudDayVendorRepository {
   loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot>;
@@ -208,6 +212,7 @@ export interface CloudDayVendorRepository {
   readLastWeekMenus(dayId: string, vendors: CloudVendorRecord[]): Promise<CloudLastWeekMenuItem[]>;
   /** The latest closed day dated before `dayId` (contract §11.2); shared with the `setOpeningCash` check. */
   findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup>;
+  findOpeningContext(dayId: string): Promise<CloudOpeningContextLookup>;
   readCommand(commandId: string): Promise<CommandReceipt | null>;
 }
 
@@ -263,6 +268,7 @@ function currentUser(options: CloudDayVendorRepositoryOptions): CurrentUser | nu
 }
 
 function buildDayVendorCommand(intent: CloudDayVendorCommandIntent): CanonicalEnabledInput {
+  if (intent.kind === 'record-post-close-entry') return buildPostCloseEntryCommand(intent.input);
   if (intent.kind === 'ensure-day') {
     const input = intent.input;
     return normalizeEnabledCommandInput({
@@ -620,6 +626,7 @@ export function createCloudDayVendorRepository(
     loadSnapshot,
     readLastWeekMenus,
     findPreviousClosed: dayId => ledgerReader.findPreviousClosed(dayId),
+    findOpeningContext: dayId => ledgerReader.findOpeningContext(dayId),
     ensureDay: input => commitTypedIntent({ kind: 'ensure-day', input }),
     saveVendor: input => commitTypedIntent({ kind: 'save-vendor', input }),
     removeVendor: input => commitTypedIntent({ kind: 'remove-vendor', input }),

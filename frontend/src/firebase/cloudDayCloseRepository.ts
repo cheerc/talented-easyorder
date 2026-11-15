@@ -27,7 +27,7 @@ import {
 import { cloudPendingJournalForRepository } from './cloudPendingJournal';
 import type { CloudRecoveryReader } from './cloudRecoveryReader';
 import {
-  computeLedgerAnomalies, type LedgerAnomaly, type LedgerAnomalyDay, type PreviousClosedDay,
+  computeLedgerAnomalies, missingDaysBetween, type LedgerAnomaly, type LedgerAnomalyDay, type PreviousClosedDay,
 } from '../domain/ledgerAnomalies';
 import { postCloseNet, type PostCloseEntry } from '../domain/postCloseEntries';
 import { accessLeasePath, backfillDayPath, dataHeadPath, dayPath, postCloseEntriesCollectionPath, settlementPath } from './firestorePaths';
@@ -660,6 +660,13 @@ export interface CloudPreviousClosedLookup {
   seq: number;
 }
 
+export interface CloudOpeningContextLookup {
+  previous: (PreviousClosedDay & { dayRevision: number; settlementRevision: number; countedEntryIds: string[] }) | null;
+  gapDayCount: number;
+  unclosedDayIds: string[];
+  seq: number;
+}
+
 export interface CloudNextOpenedLookup {
   /** The nearest day dated after the asked day whose opening cash is confirmed, or null when none exists up to today. */
   next: { dayId: string; openingCash: number } | null;
@@ -819,13 +826,15 @@ export function createCloudLedgerReader(
     }
   }
 
-  async function findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup> {
+  async function findOpeningContext(dayId: string): Promise<CloudOpeningContextLookup> {
     try {
       assertAuthenticated(options);
       if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('INVALID_INPUT', '營業日日期格式不正確');
       const before = await readHeadSeq(db);
       let end = dayId;
-      let previous: PreviousClosedDay | null = null;
+      let previous: CloudOpeningContextLookup['previous'] = null;
+      const existing = new Set<string>();
+      const unclosedDayIds: string[] = [];
       while (end > before.goLiveDate) {
         const candidate = addCalendarDays(end, -segmentDays);
         const start = candidate > before.goLiveDate ? candidate : before.goLiveDate;
@@ -844,18 +853,37 @@ export function createCloudLedgerReader(
           if (day.status === 'closed') {
             const countedCash = await countedCashOf(before.datasetId, snapshot.id, day);
             const entries = await readPostCloseEntries(db, snapshot.id, pageSize);
-            previous = { dayId: snapshot.id, countedCash, postCloseNet: postCloseNet(entries, day.lastSettlementRevision) };
+            previous = {
+              dayId: snapshot.id, countedCash, postCloseNet: postCloseNet(entries, day.lastSettlementRevision),
+              dayRevision: day.revision, settlementRevision: day.lastSettlementRevision,
+              countedEntryIds: entries.filter(entry => entry.settlementRevision === day.lastSettlementRevision).map(entry => entry.entryId).sort(),
+            };
             break;
           }
+          existing.add(snapshot.id);
+          if (day.openingCash !== null || day.totals.activeTransactionCount > 0) unclosedDayIds.push(snapshot.id);
         }
         assertHeadUnchanged(before, await readHeadSeq(db), '上一個已關帳日');
         if (previous) break;
         end = start;
       }
-      return { previous, seq: before.seq };
+      return {
+        previous,
+        gapDayCount: previous ? missingDaysBetween(previous.dayId, dayId, existing).count : 0,
+        unclosedDayIds: previous ? unclosedDayIds.sort() : [],
+        seq: before.seq,
+      };
     } catch (error) {
       throw readError(error);
     }
+  }
+
+  async function findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup> {
+    const { previous, seq } = await findOpeningContext(dayId);
+    return {
+      previous: previous ? { dayId: previous.dayId, countedCash: previous.countedCash, postCloseNet: previous.postCloseNet } : null,
+      seq,
+    };
   }
 
   /**
@@ -898,7 +926,7 @@ export function createCloudLedgerReader(
     }
   }
 
-  return { read, findPreviousClosed, findNextOpened };
+  return { read, findPreviousClosed, findOpeningContext, findNextOpened };
 }
 
 function refused(code: CommandErrorCode, message: string): CommandResult {
@@ -951,6 +979,10 @@ function buildDayCloseCommand(intent: CloudDayCloseCommandIntent): CanonicalEnab
     expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
     payload: alignWithDayId === undefined ? { countedCash, note, expectedCash } : { countedCash, note, expectedCash, alignWithDayId },
   });
+}
+
+export function buildPostCloseEntryCommand(input: RecordCloudPostCloseEntryInput): CanonicalEnabledInput {
+  return buildDayCloseCommand({ kind: 'record-post-close-entry', input });
 }
 
 function expectedIntentCommand(intent: CloudDayCloseCommandIntent): CanonicalEnabledInput {
