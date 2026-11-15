@@ -20,7 +20,6 @@ const repository = vi.hoisted(() => {
     removeVendor: vi.fn(),
     setDayMenu: vi.fn(),
     setOpeningCash: vi.fn(),
-    findPreviousClosed: vi.fn(),
     findOpeningContext: vi.fn(),
     recordPostCloseEntry: vi.fn(),
     readLastWeekMenus: vi.fn(),
@@ -61,6 +60,11 @@ vi.mock('firebase/auth', () => ({
 
 const today = '2026-10-15';
 const future = '2026-10-20';
+/** The opening context of a day whose previous closed day counted 870, with nothing in between (#734 P1 shape). */
+const previouslyClosed870 = {
+  previous: { dayId: '2026-10-13', countedCash: 870, dayRevision: 5, settlementRevision: 1, countedEntryIds: [] as string[] },
+  gapDayCount: 0, unclosedDayIds: [] as string[], seq: 10,
+};
 
 function vendor(vendorId: string, overrides: Partial<CloudVendorRecord> = {}): CloudVendorRecord {
   return {
@@ -650,7 +654,7 @@ describe('CloudDayVendorsPage', () => {
       let resolveWrite!: (result: CommandResult) => void;
       let resolveFreshSnapshot!: (value: CloudDayVendorSnapshot) => void;
       const onLedgerChanged = vi.fn();
-      repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 10 });
+      repository.findOpeningContext.mockResolvedValue({ previous: null, gapDayCount: 0, unclosedDayIds: [], seq: 10 });
       repository.setOpeningCash.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveWrite = resolve; }));
       repository.confirmPendingIntent.mockResolvedValueOnce({
         status: 'matched', receipt: receipt(commandId, 'SetOpeningCash', { dayId: today }),
@@ -1147,7 +1151,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
     repository.loadSnapshot.mockResolvedValue(snapshot());
     repository.setOpeningCash.mockResolvedValue(successful(commandId, 'SetOpeningCash', { dayId: today }));
-    repository.findPreviousClosed.mockResolvedValue({ previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10 });
+    repository.findOpeningContext.mockResolvedValue(previouslyClosed870);
     repository.readCommand.mockResolvedValue(null);
   });
 
@@ -1196,9 +1200,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
       const onNavigationStateChange = vi.fn();
       repository.loadSnapshot.mockResolvedValueOnce(snapshot({ vendors: [vendor('private-vendor')] }));
       repository.cleanupConfirmedIntent.mockRejectedValueOnce({ code, message: 'authority changed' });
-      repository.findPreviousClosed.mockResolvedValueOnce({
-        previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10,
-      });
+      repository.findOpeningContext.mockResolvedValueOnce(previouslyClosed870);
 
       renderWithLedger(readyLedger(), { onLedgerChanged, onNavigationStateChange });
       const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
@@ -1228,9 +1230,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     repository.cleanupConfirmedIntent.mockRejectedValueOnce({
       code: 'LOCAL_STORAGE_UNAVAILABLE', message: 'local journal unavailable',
     });
-    repository.findPreviousClosed.mockResolvedValueOnce({
-      previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10,
-    });
+    repository.findOpeningContext.mockResolvedValueOnce(previouslyClosed870);
 
     renderWithLedger(readyLedger(), { onLedgerChanged, onNavigationStateChange });
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
@@ -1289,7 +1289,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
   });
 
   it('sends a plain opening when there is no closed day', async () => {
-    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 10 });
+    repository.findOpeningContext.mockResolvedValue({ previous: null, gapDayCount: 0, unclosedDayIds: [], seq: 10 });
     renderWithLedger(readyLedger({ closedDays: [] }));
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '5000' } });
@@ -1305,22 +1305,22 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     renderWithLedger({ status: 'error', message: '整段掃描失敗' });
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     await waitFor(() => expect(within(form).getByText(/上一個已關帳日 2026-10-13 的實點現金為 NT\$ 870/)).toBeInTheDocument());
-    expect(repository.findPreviousClosed).toHaveBeenCalledWith(today);
+    expect(repository.findOpeningContext).toHaveBeenCalledWith(today);
     expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled();
   });
 
   it('looks the previous closed day up again after the ledger snapshot changes', async () => {
     const view = renderWithLedger(readyLedger());
     await screen.findByRole('form', { name: `${today} 開帳現金` });
-    await waitFor(() => expect(repository.findPreviousClosed).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(repository.findOpeningContext).toHaveBeenCalledTimes(1));
     view.rerender(
       <CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" ledger={readyLedger({ seq: 11 })} />,
     );
-    await waitFor(() => expect(repository.findPreviousClosed).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(repository.findOpeningContext).toHaveBeenCalledTimes(2));
   });
 
   it('blocks opening while the last close is unknown (the lookup is pending)', async () => {
-    repository.findPreviousClosed.mockReturnValue(new Promise(() => undefined));
+    repository.findOpeningContext.mockReturnValue(new Promise(() => undefined));
     renderWithLedger(readyLedger());
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     expect(within(form).getByText('正在確認上一個已關帳日的實點現金…')).toBeInTheDocument();
@@ -1328,7 +1328,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
   });
 
   it('blocks opening with the reason when the lookup failed', async () => {
-    repository.findPreviousClosed.mockRejectedValue(new Error('離線'));
+    repository.findOpeningContext.mockRejectedValue(new Error('離線'));
     renderWithLedger(readyLedger());
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     expect(await within(form).findByText(/無法確認上一個已關帳日的實點現金（離線），暫時不能開帳/)).toBeInTheDocument();
@@ -1336,9 +1336,9 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
   });
 
   it('retries a failed lookup from a button, without reloading the page', async () => {
-    repository.findPreviousClosed
+    repository.findOpeningContext
       .mockRejectedValueOnce(new Error('離線'))
-      .mockResolvedValue({ previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10 });
+      .mockResolvedValue(previouslyClosed870);
     renderWithLedger(readyLedger());
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     await within(form).findByText(/無法確認上一個已關帳日的實點現金（離線）/);
@@ -1346,7 +1346,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
 
     fireEvent.click(screen.getByTestId('opening-lookup-retry'));
     await waitFor(() => expect(within(form).getByText(/上一個已關帳日 2026-10-13 的實點現金為 NT\$ 870/)).toBeInTheDocument());
-    expect(repository.findPreviousClosed).toHaveBeenCalledTimes(2);
+    expect(repository.findOpeningContext).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('opening-lookup-retry')).not.toBeInTheDocument();
     expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled();
   });
@@ -1650,7 +1650,6 @@ describe('CloudDayVendorsPage: opening also records the difference on the previo
     vi.stubGlobal('crypto', { randomUUID: uuid });
     repository.loadSnapshot.mockImplementation(async () => { calls.push('snapshot'); return opened ? openedSnapshot() : snapshot(); });
     repository.findOpeningContext.mockImplementation(async () => { calls.push('context'); return contextOf(); });
-    repository.findPreviousClosed.mockImplementation(async () => ({ previous: contextOf().previous, seq: 10 }));
     repository.recordPostCloseEntry.mockImplementation(async (input: { commandId: string }) => {
       calls.push('entry');
       recorded = { net: -50, ids: ['entry-1'] };
@@ -1926,9 +1925,8 @@ describe('CloudDayVendorsPage: opening also records the difference on the previo
     });
     renderOpening();
     await checkAndSubmit();
-    const status = await screen.findByTestId('opening-chain-status');
-    expect(status).toHaveTextContent('沒有送出開帳');
-    expect(status).toHaveTextContent('NT$ 10');
+    await waitFor(() => expect(screen.getByTestId('opening-chain-status')).toHaveTextContent('沒有送出開帳'));
+    expect(screen.getByTestId('opening-chain-status')).toHaveTextContent('NT$ 10');
     expect(repository.setOpeningCash).not.toHaveBeenCalled();
     expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
     await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));

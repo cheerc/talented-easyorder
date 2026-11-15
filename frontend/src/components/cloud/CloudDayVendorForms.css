@@ -168,3 +168,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.cloud-day-form__check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.cloud-day-form label.cloud-day-form__check {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
