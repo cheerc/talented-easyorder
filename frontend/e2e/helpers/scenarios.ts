@@ -293,10 +293,14 @@ export interface OpeningPostCloseCandidateScenario extends ScenarioHandle {
 export async function seedOpeningPostCloseCandidate(): Promise<OpeningPostCloseCandidateScenario> {
   const today = taipeiToday();
   await assertDayAbsent(today);
+  // 營業日文件不存在不代表乾淨：同一個 Emulator 上前面的 spec 可能只刪營業日與 settlements/1，留下重開再關帳產生的
+  // settlements/2…或補記；日結頁讀這一天會因日結版本數量對不上而拒絕載入。所以也跳過仍有這些殘留的日子。
+  const entryDays = new Set((await listRaw('postCloseEntries')).map(item => item.fields.dayId?.stringValue));
   let previousDay: string | null = null;
   for (let offset = 5; offset < 30 && previousDay === null; offset++) {
     const day = shiftDay(today, -offset);
-    if ((await readRaw('days', day)) === null) previousDay = day;
+    if ((await readRaw('days', day)) !== null || entryDays.has(day)) continue;
+    if ((await listRaw(`days/${day}/settlements`)).length === 0) previousDay = day;
   }
   if (previousDay === null) throw new Error('近期沒有可用的合成 fixture 日期');
   const between: string[] = [];
