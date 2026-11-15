@@ -7,6 +7,7 @@ import type {
   CloudDayVendorSnapshot,
   CloudVendorRecord,
 } from '../../firebase/cloudDayVendorRepository';
+import type { CloudOpeningContextLookup } from '../../firebase/cloudDayCloseRepository';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { CloudDayVendorsPage } from './CloudDayVendorsPage';
 import { withWeekday } from '../../test/withWeekday';
@@ -20,6 +21,8 @@ const repository = vi.hoisted(() => {
     setDayMenu: vi.fn(),
     setOpeningCash: vi.fn(),
     findPreviousClosed: vi.fn(),
+    findOpeningContext: vi.fn(),
+    recordPostCloseEntry: vi.fn(),
     readLastWeekMenus: vi.fn(),
     readCommand: vi.fn(),
     commitDayVendorIntent: vi.fn((intent: { kind: string; input: unknown }) => {
@@ -29,6 +32,7 @@ const repository = vi.hoisted(() => {
         case 'remove-vendor': return value.removeVendor(intent.input);
         case 'set-day-menu': return value.setDayMenu(intent.input);
         case 'set-opening-cash': return value.setOpeningCash(intent.input);
+        case 'record-post-close-entry': return value.recordPostCloseEntry(intent.input);
         default: throw new Error(`Unexpected DayVendor intent: ${intent.kind}`);
       }
     }),
@@ -1565,5 +1569,376 @@ describe('CloudDayVendorsPage: #710 P2 no standing reload button; the panel re-r
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
     expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #734 P2: the opening form can also record the difference on the previous closed day. Everything goes through the real page
+// component and the repository entry points: two existing commands in sequence, never a second entry once the first is confirmed.
+describe('CloudDayVendorsPage: opening also records the difference on the previous closed day (#734)', () => {
+  const entryId = '00000000-0000-4000-8000-0000000007e1';
+  const openingId = '00000000-0000-4000-8000-0000000007e2';
+  const laterId = '00000000-0000-4000-8000-0000000007e3';
+  const previousDay = '2026-10-13';
+  const reason = '前一天少記一筆支出';
+  const formName = `${today} 開帳現金`;
+  const readyLedger: CloudLedgerView = {
+    status: 'ready',
+    snapshot: { today, goLiveDate: '2026-10-01', anomalies: [], seq: 10, closedDays: [{ dayId: previousDay, countedCash: 1000 }] },
+  };
+  let recorded: { net: number; ids: string[] };
+  let opened: boolean;
+  let calls: string[];
+  let uuid: ReturnType<typeof vi.fn>;
+  const onLedgerChanged = vi.fn();
+  const onNavigationStateChange = vi.fn();
+
+  const contextOf = (change: Partial<CloudOpeningContextLookup> = {}): CloudOpeningContextLookup => ({
+    previous: {
+      dayId: previousDay, countedCash: 1000, postCloseNet: recorded.net, dayRevision: 5, settlementRevision: 1, countedEntryIds: recorded.ids,
+    },
+    gapDayCount: 0, unclosedDayIds: [], seq: 10, ...change,
+  });
+  const withPrevious = (change: Partial<NonNullable<CloudOpeningContextLookup['previous']>>) => (
+    contextOf({ previous: { ...contextOf().previous!, ...change } })
+  );
+  const openedSnapshot = (openingCash = 950) => snapshot({
+    day: { ...snapshot().day!, revision: 4, openingCash, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' },
+  });
+  const unknown = (): CommandResult => ({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+  const toastText = () => screen.getByTestId('toast').querySelector('.toast__text')?.textContent ?? null;
+
+  function renderOpening() {
+    return render(
+      <CloudDayVendorsPage
+        db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" ledger={readyLedger}
+        onLedgerChanged={onLedgerChanged} onNavigationStateChange={onNavigationStateChange}
+      />,
+    );
+  }
+
+  async function openingForm() {
+    const form = await screen.findByRole('form', { name: formName });
+    await waitFor(() => expect(within(form).queryByText(/正在確認上一個已關帳日/)).not.toBeInTheDocument());
+    return form;
+  }
+
+  async function typeAmount(amount: string) {
+    const form = await openingForm();
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: amount } });
+    return form;
+  }
+
+  async function checkAndSubmit(amount = '950') {
+    const form = await typeAmount(amount);
+    fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: reason } });
+    fireEvent.click(await within(form).findByRole('checkbox', { name: /同時把差額補記到/ }));
+    const submit = within(form).getByRole('button', { name: '補記差額並開帳' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    return form;
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    recorded = { net: 0, ids: [] };
+    opened = false;
+    calls = [];
+    onLedgerChanged.mockReset();
+    onNavigationStateChange.mockReset();
+    uuid = vi.fn().mockReturnValueOnce(entryId).mockReturnValueOnce(openingId).mockReturnValue(laterId);
+    vi.stubGlobal('crypto', { randomUUID: uuid });
+    repository.loadSnapshot.mockImplementation(async () => { calls.push('snapshot'); return opened ? openedSnapshot() : snapshot(); });
+    repository.findOpeningContext.mockImplementation(async () => { calls.push('context'); return contextOf(); });
+    repository.findPreviousClosed.mockImplementation(async () => ({ previous: contextOf().previous, seq: 10 }));
+    repository.recordPostCloseEntry.mockImplementation(async (input: { commandId: string }) => {
+      calls.push('entry');
+      recorded = { net: -50, ids: ['entry-1'] };
+      return successful(input.commandId, 'RecordPostCloseEntry', { dayId: previousDay });
+    });
+    repository.setOpeningCash.mockImplementation(async (input: { commandId: string }) => {
+      calls.push('opening');
+      opened = true;
+      return successful(input.commandId, 'SetOpeningCash', { dayId: today });
+    });
+    repository.cleanupConfirmedIntent.mockResolvedValue(true);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    repository.readCommand.mockResolvedValue(null);
+  });
+
+  it('offers an unchecked option, previews the day, direction, amount and irreversibility, and sends only the opening when unchecked', async () => {
+    renderOpening();
+    const form = await typeAmount('950');
+    const box = await within(form).findByRole('checkbox', { name: /同時把差額補記到 2026-10-13/ });
+    expect(box).not.toBeChecked();
+    expect(screen.queryByTestId('post-close-preview')).not.toBeInTheDocument();
+    fireEvent.click(box);
+    const preview = screen.getByTestId('post-close-preview');
+    expect(preview).toHaveTextContent('2026-10-13');
+    expect(preview).toHaveTextContent('支出');
+    expect(preview).toHaveTextContent('NT$ 50');
+    expect(preview).toHaveTextContent('不能修改或刪除');
+    fireEvent.click(box);
+    fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: reason } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledWith({
+      commandId: entryId, leaseEpoch: 4, dayId: today, expectedRevision: 3, openingCash: 950, reason,
+    }));
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a day without a document in between', () => contextOf({ gapDayCount: 1 }), '950'],
+    ['an unclosed day in between', () => contextOf({ unclosedDayIds: ['2026-10-12'] }), '950'],
+    ['no previous closed day', () => contextOf({ previous: null }), '950'],
+    ['a difference above 20,000', () => withPrevious({ countedCash: 20_001 }), '0'],
+    ['no difference', () => contextOf(), '1000'],
+  ] as const)('shows no option with %s', async (_label, context, amount) => {
+    repository.findOpeningContext.mockImplementation(async () => context());
+    renderOpening();
+    const form = await typeAmount(amount);
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('post-close-preview')).not.toBeInTheDocument();
+  });
+
+  it('shows no option once the day is already opened', async () => {
+    repository.loadSnapshot.mockImplementation(async () => openedSnapshot(800));
+    renderOpening();
+    const form = await typeAmount('950');
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('allows exactly 20,000 and clears the check when the amount makes the option disappear', async () => {
+    repository.findOpeningContext.mockImplementation(async () => withPrevious({ countedCash: 20_000 }));
+    renderOpening();
+    const form = await typeAmount('0');
+    const box = await within(form).findByRole('checkbox', { name: /同時把差額補記到/ });
+    fireEvent.click(box);
+    expect(screen.getByTestId('post-close-preview')).toHaveTextContent('NT$ 20,000');
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '20000' } });
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '0' } });
+    expect(await within(form).findByRole('checkbox', { name: /同時把差額補記到/ })).not.toBeChecked();
+  });
+
+  it('re-reads, records the entry, checks again, then opens with the same reason and different command ids', async () => {
+    renderOpening();
+    await checkAndSubmit();
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledOnce());
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledExactlyOnceWith({
+      commandId: entryId, leaseEpoch: 4, dayId: previousDay, expectedDayRevision: 5, expectedSettlementRevision: 1,
+      direction: 'expense', amount: 50, reason,
+    });
+    expect(repository.setOpeningCash).toHaveBeenCalledExactlyOnceWith({
+      commandId: openingId, leaseEpoch: 4, dayId: today, expectedRevision: 3, openingCash: 950, reason,
+    });
+    const entryAt = calls.indexOf('entry');
+    expect(calls.slice(0, entryAt)).toContain('context');
+    expect(calls.slice(entryAt, calls.indexOf('opening'))).toContain('context');
+    await waitFor(() => expect(toastText()).toMatch(/補記.*開帳/));
+    await waitFor(() => expect(onLedgerChanged).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+    expect(screen.queryByTestId('opening-chain-status')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['another tab added entries that net to the same amount', () => withPrevious({ countedEntryIds: ['x-1', 'x-2'] }), undefined],
+    ['the settlement revision', () => withPrevious({ settlementRevision: 2 }), undefined],
+    ['the previous day revision', () => withPrevious({ dayRevision: 6 }), undefined],
+    ['a day without a document in between', () => contextOf({ gapDayCount: 1 }), undefined],
+    ['an unclosed day in between', () => contextOf({ unclosedDayIds: ['2026-10-14'] }), undefined],
+    ['the previous closed day', () => contextOf({ previous: null }), undefined],
+    ['today already opened', () => contextOf(), () => openedSnapshot(900)],
+    ['the opening day revision', () => contextOf(), () => snapshot({ day: { ...snapshot().day!, revision: 4 } })],
+    ['the dataset', () => contextOf(), () => snapshot({ datasetId: 'another-dataset' })],
+    ['midnight', () => contextOf(), () => snapshot({ selectionDate: '2026-10-16' })],
+  ] as const)('sends nothing when %s changed after the screen was read', async (_label, latest, latestSnapshot) => {
+    repository.findOpeningContext.mockResolvedValueOnce(contextOf()).mockResolvedValueOnce(latest());
+    if (latestSnapshot) repository.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(latestSnapshot());
+    renderOpening();
+    await checkAndSubmit();
+    expect(await screen.findByTestId('opening-post-close-stale')).toHaveTextContent('沒有送出');
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+    expect(repository.setOpeningCash).not.toHaveBeenCalled();
+    expect(uuid).not.toHaveBeenCalled();
+    await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+    const box = screen.queryByRole('checkbox', { name: /同時把差額補記到/ });
+    if (box) expect(box).not.toBeChecked();
+    const reasonBox = screen.queryByRole('textbox', { name: /差額原因/ });
+    if (reasonBox) expect(reasonBox).toHaveValue('');
+  });
+
+  it('shows the latest difference when another tab already recorded the same amount, and does not record it again', async () => {
+    repository.findOpeningContext.mockResolvedValueOnce(contextOf()).mockResolvedValueOnce(
+      withPrevious({ postCloseNet: -50, countedEntryIds: ['other-tab'] }),
+    );
+    renderOpening();
+    const form = await checkAndSubmit();
+    expect(await screen.findByTestId('opening-post-close-stale')).toBeInTheDocument();
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+    expect(within(form).getByText(/關帳後補記淨支出 NT\$ 50，有效關帳現金 NT\$ 950/)).toBeInTheDocument();
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(form).getByRole('textbox', { name: /^開帳現金/ })).toHaveValue('950');
+  });
+
+  it('locks the form and the navigation while the pre-send re-read runs and ignores a second submit', async () => {
+    let finishRead!: (value: CloudDayVendorSnapshot) => void;
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot())
+      .mockImplementationOnce(() => new Promise<CloudDayVendorSnapshot>(resolve => { finishRead = resolve; }));
+    renderOpening();
+    const form = await checkAndSubmit();
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+    expect(within(form).getByRole('checkbox', { name: /同時把差額補記到/ })).toBeDisabled();
+    expect(within(form).getByRole('textbox', { name: /^開帳現金/ })).toBeDisabled();
+    fireEvent.submit(form);
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
+    expect(uuid).not.toHaveBeenCalled();
+    await act(async () => finishRead(snapshot()));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledOnce());
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+  });
+
+  it('does not open when the entry is explicitly rejected', async () => {
+    repository.recordPostCloseEntry.mockImplementationOnce(async () => ({
+      ok: false, error: { code: 'REVISION_CONFLICT', message: 'revision conflict' },
+    }));
+    renderOpening();
+    await checkAndSubmit();
+    expect(await screen.findByText(/操作未完成/)).toBeInTheDocument();
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+    expect(repository.setOpeningCash).not.toHaveBeenCalled();
+    await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+  });
+
+  it('keeps the entry command id while its result is unknown, and opens only after the same id is confirmed', async () => {
+    repository.recordPostCloseEntry.mockImplementationOnce(async () => unknown());
+    repository.confirmPendingIntent.mockImplementationOnce(async () => {
+      recorded = { net: -50, ids: ['entry-1'] };
+      return { status: 'matched', receipt: receipt(entryId, 'RecordPostCloseEntry', { dayId: previousDay }) };
+    });
+    renderOpening();
+    await checkAndSubmit();
+    await screen.findByRole('alert', { name: '命令結果確認' });
+    expect(repository.setOpeningCash).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledOnce());
+    expect(repository.confirmPendingIntent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ kind: 'record-post-close-entry', input: expect.objectContaining({ commandId: entryId }) }),
+      'demo-p07', 'uid-a',
+    );
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+    expect(repository.setOpeningCash).toHaveBeenCalledWith(expect.objectContaining({ commandId: openingId, openingCash: 950, reason }));
+  });
+
+  it('retries an entry that was not found with the same command id and then continues', async () => {
+    repository.recordPostCloseEntry.mockImplementationOnce(async () => unknown());
+    renderOpening();
+    await checkAndSubmit();
+    await screen.findByRole('alert', { name: '命令結果確認' });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    fireEvent.click(await screen.findByRole('button', { name: '以相同命令編號重試' }));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledOnce());
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledTimes(2);
+    expect(repository.recordPostCloseEntry.mock.calls.map(([input]) => input.commandId)).toEqual([entryId, entryId]);
+    expect(repository.setOpeningCash).toHaveBeenCalledWith(expect.objectContaining({ commandId: openingId }));
+  });
+
+  it('keeps the recorded entry and never records a second one when the opening is rejected', async () => {
+    repository.setOpeningCash.mockImplementationOnce(async () => ({
+      ok: false, error: { code: 'REVISION_CONFLICT', message: 'revision conflict' },
+    }));
+    renderOpening();
+    await checkAndSubmit();
+    expect(await screen.findByText(/補記已完成，但開帳未完成/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
+    const status = await screen.findByTestId('opening-chain-status');
+    expect(status).toHaveTextContent('補記已完成、開帳未完成');
+    const form = screen.getByRole('form', { name: formName });
+    expect(within(form).getByRole('textbox', { name: /^開帳現金/ })).toHaveValue('950');
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledTimes(2));
+    expect(repository.setOpeningCash.mock.calls[1][0]).toEqual({
+      commandId: laterId, leaseEpoch: 4, dayId: today, expectedRevision: 3, openingCash: 950,
+    });
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByTestId('opening-chain-status')).not.toBeInTheDocument());
+  });
+
+  it('checks the same opening command id and does not record again when the opening result is unknown', async () => {
+    repository.setOpeningCash.mockImplementationOnce(async () => unknown());
+    repository.confirmPendingIntent.mockImplementationOnce(async () => {
+      opened = true;
+      return { status: 'matched', receipt: receipt(openingId, 'SetOpeningCash', { dayId: today }) };
+    });
+    renderOpening();
+    await checkAndSubmit();
+    await screen.findByRole('alert', { name: '命令結果確認' });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    await waitFor(() => expect(toastText()).toMatch(/補記.*開帳/));
+    expect(repository.confirmPendingIntent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ kind: 'set-opening-cash', input: expect.objectContaining({ commandId: openingId }) }),
+      'demo-p07', 'uid-a',
+    );
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+    expect(repository.setOpeningCash).toHaveBeenCalledOnce();
+  });
+
+  it('locks the form between the steps, ignores a second submit and stops when the lease is lost', async () => {
+    let resolveEntry!: (result: CommandResult) => void;
+    repository.recordPostCloseEntry.mockImplementationOnce(() => new Promise<CommandResult>(resolve => { resolveEntry = resolve; }));
+    renderOpening();
+    const form = await checkAndSubmit();
+    await waitFor(() => expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce());
+    expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+    expect(within(form).getByRole('checkbox', { name: /同時把差額補記到/ })).toBeDisabled();
+    fireEvent.submit(form);
+    expect(uuid).toHaveBeenCalledTimes(1);
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+    await act(async () => resolveEntry({ ok: false, error: { code: 'LEASE_LOST', message: 'lease changed' } }));
+    expect(await screen.findByText('登入狀態已失效。資料與操作草稿已清除；請重新登入。')).toBeInTheDocument();
+    expect(repository.setOpeningCash).not.toHaveBeenCalled();
+    expect(screen.queryByRole('form', { name: formName })).not.toBeInTheDocument();
+    await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'revoked'));
+  });
+
+  it('after a refresh the entry is already counted: no option, no reason, and only the opening is sent', async () => {
+    recorded = { net: -50, ids: ['entry-1'] };
+    renderOpening();
+    const form = await typeAmount('950');
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(form).queryByRole('textbox', { name: /差額原因/ })).not.toBeInTheDocument();
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledWith({
+      commandId: entryId, leaseEpoch: 4, dayId: today, expectedRevision: 3, openingCash: 950,
+    }));
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+  });
+
+  it('stops without opening or a second entry when a new difference appears after the entry', async () => {
+    repository.recordPostCloseEntry.mockImplementationOnce(async (input: { commandId: string }) => {
+      calls.push('entry');
+      recorded = { net: -40, ids: ['entry-1'] };
+      return successful(input.commandId, 'RecordPostCloseEntry', { dayId: previousDay });
+    });
+    renderOpening();
+    await checkAndSubmit();
+    const status = await screen.findByTestId('opening-chain-status');
+    expect(status).toHaveTextContent('沒有送出開帳');
+    expect(status).toHaveTextContent('NT$ 10');
+    expect(repository.setOpeningCash).not.toHaveBeenCalled();
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+    const form = screen.getByRole('form', { name: formName });
+    expect(within(form).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(form).getByRole('textbox', { name: /差額原因/ })).toHaveValue(reason);
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ openingCash: 950, reason }),
+    ));
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledOnce();
   });
 });

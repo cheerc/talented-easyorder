@@ -228,6 +228,70 @@ describe('CloudDayVendorForms', () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
   });
+  describe('CloudDayOpeningCashForm: also record the difference on the previous closed day (#734)', () => {
+    const previousClosed: PreviousClosedDay = { dayId: '2026-10-14', countedCash: 1000 };
+    const offer = { targetDayId: '2026-10-14', direction: 'expense' as const, amount: 50, previousEffectiveCash: 1000 };
+
+    function renderForm(props: { postCloseOffer?: typeof offer | null; checked?: boolean; disabled?: boolean }) {
+      const onChecked = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <CloudDayOpeningCashForm
+          businessDate="2026-10-16" currentOpeningCash={null} amountText="950"
+          onAmountTextChange={vi.fn()} onSubmit={onSubmit} previousClosed={previousClosed}
+          reasonText="少記一筆" onReasonTextChange={vi.fn()}
+          {...(props.postCloseOffer === undefined ? {} : { postCloseOffer: props.postCloseOffer })}
+          postCloseChecked={props.checked ?? false} onPostCloseCheckedChange={onChecked}
+          {...(props.disabled ? { disabled: true } : {})}
+        />,
+      );
+      return { onChecked, onSubmit };
+    }
+
+    it('offers an unchecked option naming the target day only when there is an offer', () => {
+      renderForm({ postCloseOffer: offer });
+      const box = screen.getByRole('checkbox', { name: /同時把差額補記到 2026-10-14/ });
+      expect(box).not.toBeChecked();
+      expect(screen.queryByTestId('post-close-preview')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '確認開帳金額' })).toBeInTheDocument();
+    });
+
+    it('shows no option when there is no offer or the caller passes none', () => {
+      const view = render(
+        <CloudDayOpeningCashForm
+          businessDate="2026-10-16" currentOpeningCash={null} amountText="950"
+          onAmountTextChange={vi.fn()} onSubmit={vi.fn()} previousClosed={previousClosed}
+          reasonText="" onReasonTextChange={vi.fn()} postCloseOffer={null}
+        />,
+      );
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      view.unmount();
+      renderForm({});
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('previews the day, direction, amount and irreversibility in a warn callout once checked', () => {
+      const { onSubmit } = renderForm({ postCloseOffer: offer, checked: true });
+      const preview = screen.getByTestId('post-close-preview');
+      expect(preview.closest('.callout-ui.callout-warn')).not.toBeNull();
+      expect(preview).toHaveTextContent('2026-10-14');
+      expect(preview).toHaveTextContent('支出');
+      expect(preview).toHaveTextContent('NT$ 50');
+      expect(preview).toHaveTextContent('不能修改或刪除');
+      expect(preview).toHaveTextContent('先補記，再開帳');
+      fireEvent.click(screen.getByRole('button', { name: '補記差額並開帳' }));
+      expect(onSubmit).toHaveBeenCalledWith('950');
+    });
+
+    it('reports the checkbox change and disables it with the form', () => {
+      const { onChecked } = renderForm({ postCloseOffer: offer });
+      fireEvent.click(screen.getByRole('checkbox', { name: /同時把差額補記到/ }));
+      expect(onChecked).toHaveBeenCalledWith(true);
+      renderForm({ postCloseOffer: offer, disabled: true });
+      expect(screen.getAllByRole('checkbox', { name: /同時把差額補記到/ }).at(-1)).toBeDisabled();
+    });
+  });
+
   describe('說明與警示分類（#650）', () => {
     it('puts form usage notes into HelpTip instead of inline paragraphs', () => {
       const { unmount } = render(<VendorFormHarness mode="create" initial={{ vendorId: '', name: '', phone: '', note: '', status: 'active' }} onSubmit={vi.fn()} />);
