@@ -1836,10 +1836,12 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       expect(kinds).toEqual(['BackfillOpeningCash', 'EnsureDay', 'StartBackfill']);
 
       // 3. 關帳區：須等於 later 的開帳 970，目前應有 870，差 100，關帳停用並引導補登
-      await expect(main.getByTestId('backfill-align-target')).toContainText(`須等於 ${later} 的開帳現金 NT$ 970`);
-      await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 100，不能關帳');
+      await expect(main.getByTestId('backfill-align-gap')).toContainText(`${later} 已經開帳，開帳現金是 NT$ 970`);
+      await expect(main.getByTestId('backfill-align-gap')).toContainText(`${gap} 的應有現金是 NT$ 870，少了 NT$ 100，所以還不能關帳`);
       const closeForm = main.getByRole('form', { name: `${gap} 關帳` });
       await expect(closeForm.getByRole('textbox', { name: '實點現金（元）' })).toHaveValue('970');
+      await expect(closeForm.getByRole('textbox', { name: '實點現金（元）' })).toBeDisabled();
+      await expect(closeForm).not.toContainText('無差額');
       await expect(closeForm.getByRole('button', { name: '確認關帳' })).toBeDisabled();
 
       // 4. 訂餐頁補登 60 元繳費：仍差 40，再補 40：剛好對上
@@ -1847,7 +1849,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
         if (amount === '40') {
           await page.getByRole('button', { name: '今日帳', exact: true }).click();
           await main.getByLabel('營業日', { exact: true }).fill(gap);
-          await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 40，不能關帳');
+          await expect(main.getByTestId('backfill-align-gap')).toContainText('少了 NT$ 40，所以還不能關帳');
         }
         await main.getByTestId('backfill-align-orders').click();
         const orders = page.getByTestId('cloud-orders-page');
