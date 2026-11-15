@@ -323,6 +323,50 @@ describe('createCloudLedgerReader.read', () => {
   });
 });
 
+describe('createCloudLedgerReader.findOpeningContext (#734)', () => {
+  const closed = dayDoc({ status: 'closed', revision: 7, openingCash: 100, lastSettlementRevision: 2 });
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const entry = (n: number, revision: number): [string, Data] => [id(n), {
+    entryId: id(n), dayId: '2026-10-01', settlementRevision: revision, direction: 'expense', amount: 10,
+    reason: '補記', createdBy: uid, createdAt: ts('2026-10-03T10:00:00.000Z'), commandId: id(n),
+  }];
+  const settlements = { 'days/2026-10-01/settlements/2': settlementDoc('2026-10-01', 2, { countedCash: 1000 }) };
+
+  beforeEach(() => { vi.clearAllMocks(); db = {} as Firestore; });
+
+  it('returns versions and counted entry IDs and distinguishes empty and missing days', async () => {
+    setup({ days: [['2026-10-01', closed], ['2026-10-02', dayDoc()]], settlements, entries: [entry(3, 2), entry(1, 1), entry(2, 2)] });
+    expect(await reader().findOpeningContext('2026-10-04')).toEqual({
+      previous: { dayId: '2026-10-01', countedCash: 1000, postCloseNet: -20, dayRevision: 7, settlementRevision: 2, countedEntryIds: [id(2), id(3)] },
+      gapDayCount: 1, unclosedDayIds: [], seq: 10,
+    });
+  });
+
+  it('lists active open and reopened intermediate days in ascending order', async () => {
+    setup({ days: [['2026-10-01', closed], ['2026-10-02', dayDoc({ openingCash: 10 })], ['2026-10-03', dayDoc({ status: 'reopened', openingCash: 0, totals: totals(1), lastSettlementRevision: 1 })]], settlements });
+    const result = await reader().findOpeningContext('2026-10-04');
+    expect(result).toMatchObject({ gapDayCount: 0, unclosedDayIds: ['2026-10-02', '2026-10-03'] });
+  });
+
+  it('collects across segments without additional queries compared with the existing lookup', async () => {
+    const data: Setup = { days: [['2026-10-01', closed], ['2026-10-02', dayDoc()], ['2026-10-04', dayDoc({ openingCash: 50 })]], settlements };
+    setup(data);
+    const context = await reader({ segmentDays: 2 }).findOpeningContext('2026-10-06');
+    const count = firestoreMocks.getDocsFromServer.mock.calls.length;
+    expect(context).toMatchObject({ gapDayCount: 2, unclosedDayIds: ['2026-10-04'] });
+    vi.clearAllMocks(); setup(data);
+    await reader({ segmentDays: 2 }).findPreviousClosed('2026-10-06');
+    expect(firestoreMocks.getDocsFromServer).toHaveBeenCalledTimes(count);
+  });
+
+  it('returns an empty context without a previous close and refuses a stale head', async () => {
+    setup({ days: [['2026-10-02', dayDoc()]] });
+    expect(await reader().findOpeningContext('2026-10-04')).toEqual({ previous: null, gapDayCount: 0, unclosedDayIds: [], seq: 10 });
+    setup({ heads: [head(), head({ seq: 11 })] });
+    await expect(reader().findOpeningContext('2026-10-04')).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+  });
+});
+
 describe('createCloudLedgerReader.findPreviousClosed', () => {
   beforeEach(() => {
     vi.clearAllMocks();
